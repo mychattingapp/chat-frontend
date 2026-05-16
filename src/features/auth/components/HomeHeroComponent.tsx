@@ -1,32 +1,55 @@
-import { Box, Card, CardContent, Typography } from '@mui/material';
-import bg from '../assets/message-center-svgrepo-com.png';
+import { Box, Typography } from '@mui/material';
+import heroChatIcon from '../../../assets/chat-conversation-svgrepo-com.svg';
 
 export default function HomeHeroComponent() {
     return (
         <Box
             sx={{
                 height: '100%',
-                backgroundImage: `url(${bg})`,
-                backgroundSize: '60%',
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'center bottom',
                 display: 'flex',
                 alignItems: 'flex-start',
-                justifyContent: 'center',
-                p: 4,
-                background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)',
+                justifyContent: 'flex-start',
+                paddingTop: 6,
+                px: { md: 5, lg: 7 },
+                backgroundColor: 'background.default',
+                borderRight: '1px solid',
+                borderColor: 'divider',
+                position: 'relative',
+                overflow: 'hidden',
             }}
         >
-            <Card sx={{ backgroundColor: 'transparent', mt: 8 }} elevation={0}>
-                <CardContent>
-                    <Typography fontWeight={600} variant="h3" gutterBottom sx={{ color: '#333' }}>
-                        Real-time messaging for everyone
-                    </Typography>
-                    <Typography variant="h6" sx={{ color: '#666', fontWeight: 400 }}>
-                        Secure, fast, and built for seamless communication
-                    </Typography>
-                </CardContent>
-            </Card>
+            <Box sx={{ mt: 4, maxWidth: 600 }}>
+                <Typography
+                    variant='h6'
+                    sx={{
+                        color: 'primary.light',
+                        fontWeight: 800,
+                        letterSpacing: 1.4,
+                    }}
+                >
+                    MyChattingApp
+                </Typography>
+                <Typography fontWeight={800} variant="h4" gutterBottom sx={{ color: 'text.primary', mt: 1 }}>
+                    Real-time messaging for everyone
+                </Typography>
+                <Typography variant="body1" sx={{ color: 'text.secondary', fontWeight: 400 }}>
+                    Chat with friends in real time.
+                </Typography>
+            </Box>
+            <Box
+                component="img"
+                src={heroChatIcon}
+                alt=""
+                sx={{
+                    position: 'absolute',
+                    right: { md: -48, lg: -40 },
+                    bottom: { md: 20, lg: 28 },
+                    width: { md: 460, lg: 620 },
+                    maxWidth: '72%',
+                    height: { md: 220, lg: 290 },
+                    opacity: 0.15,
+                }}
+            />
         </Box>
     )
 };

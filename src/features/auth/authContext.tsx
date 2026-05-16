@@ -16,7 +16,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
     const refreshUser = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await apiRequest<AuthMeResponse>('auth/me', { method: 'GET' });
+            const data = await apiRequest<AuthMeResponse>('api/auth/me', { method: 'GET' });
             setUser(data.user ?? null);
         }
         catch {
@@ -30,7 +30,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
     const logout = useCallback(async () => {
         setUser(null);
         try {
-            await apiRequest('auth/logout', { method: 'POST' }, false);
+            await apiRequest('api/auth/logout', { method: 'POST' }, false);
         }
         catch {
             // Ignore logout errors; local state is already cleared.
