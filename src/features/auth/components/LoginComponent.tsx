@@ -3,6 +3,28 @@ import { FcGoogle } from "react-icons/fc";
 import { FaMicrosoft, FaApple } from "react-icons/fa";
 import { useOAuthLogin } from "../index";
 
+const authButtonSx = {
+    mt: 2,
+    height: 52,
+    py: 0,
+    fontWeight: 700,
+    backgroundColor: 'background.default',
+    border: '1px solid',
+    borderColor: 'divider',
+    '& .MuiButton-startIcon': {
+        width: 24,
+        justifyContent: 'center',
+    },
+};
+
+function IconBox({ children }: { children: React.ReactNode }) {
+    return (
+        <Box component="span" sx={{ width: 22, height: 22, display: 'grid', placeItems: 'center' }}>
+            {children}
+        </Box>
+    );
+}
+
 export default function LoginComponent() {
     const { loginWithGoogle, isLoading } = useOAuthLogin();
 
@@ -14,6 +36,7 @@ export default function LoginComponent() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: '100%',
+                backgroundColor: 'background.paper',
             }}
         >
             <Box sx={{ width: '100%', maxWidth: 400 }}>
@@ -22,15 +45,14 @@ export default function LoginComponent() {
                     component="h1"
                     gutterBottom
                     align="center"
-                    sx={{ fontWeight: 600, mb: 1 }}
+                    sx={{ fontWeight: 800, mb: 1, color: 'text.primary' }}
                 >
                     Welcome
                 </Typography>
                 <Typography
                     variant="body2"
                     align="center"
-                    color="text.secondary"
-                    sx={{ mb: 4 }}
+                    sx={{ mb: 4, color: 'text.secondary' }}
                 >
                     Sign in to continue
                 </Typography>
@@ -38,19 +60,19 @@ export default function LoginComponent() {
                 <Button
                     variant="contained"
                     fullWidth
-                    startIcon={<FcGoogle size={20} />}
+                    startIcon={<IconBox><FcGoogle size={22} /></IconBox>}
                     onClick={loginWithGoogle}
                     disabled={isLoading}
                     sx={{
-                        mt: 2,
-                        py: 1.5,
-                        fontWeight: 500,
-                        backgroundColor: '#fff',
-                        color: '#333',
-                        border: '1px solid #ddd',
+                        ...authButtonSx,
+                        color: 'text.primary',
                         '&:hover': {
-                            backgroundColor: '#f5f5f5',
-                        }
+                            backgroundColor: 'action.hover',
+                            borderColor: 'primary.light',
+                        },
+                        '&.Mui-focusVisible': {
+                            borderColor: 'primary.light',
+                        },
                     }}
                 >
                     Continue with Google
@@ -59,17 +81,14 @@ export default function LoginComponent() {
                 <Button
                     variant="contained"
                     fullWidth
-                    startIcon={<FaMicrosoft size={20} color="#00A4EF" />}
+                    startIcon={<IconBox><FaMicrosoft size={20} color="#00A4EF" /></IconBox>}
                     disabled={true}
                     sx={{
-                        mt: 2,
-                        py: 1.5,
-                        fontWeight: 500,
-                        backgroundColor: '#fff',
-                        color: '#333',
-                        border: '1px solid #ddd',
+                        ...authButtonSx,
+                        color: 'text.secondary',
+                        opacity: 0.7,
                         '&:hover': {
-                            backgroundColor: '#f5f5f5',
+                            backgroundColor: 'action.hover',
                         }
                     }}
                 >
@@ -79,16 +98,14 @@ export default function LoginComponent() {
                 <Button
                     variant="contained"
                     fullWidth
-                    startIcon={<FaApple size={20} />}
+                    startIcon={<IconBox><FaApple size={21} /></IconBox>}
                     disabled={true}
                     sx={{
-                        mt: 2,
-                        py: 1.5,
-                        fontWeight: 500,
-                        backgroundColor: '#000',
-                        color: '#fff',
+                        ...authButtonSx,
+                        color: 'text.secondary',
+                        opacity: 0.7,
                         '&:hover': {
-                            backgroundColor: '#333',
+                            backgroundColor: 'action.hover',
                         }
                     }}
                 >

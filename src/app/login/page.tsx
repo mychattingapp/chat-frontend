@@ -9,22 +9,27 @@ export default function LoginPage() {
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
-                minHeight: '100vh',
-                width: '100vw',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                height: '100vh',
+                width: '100%',
+                overflow: 'hidden',
+                backgroundColor: 'background.default',
+                p: { xs: 2, md: 4 },
             }}
         >
             <Grid
                 container
                 sx={{
                     minHeight: '80vh',
-                    minWidth: { xs: '95vw', md: '80vw' },
-                    backgroundColor: '#fff',
-                    borderRadius: 2,
+                    width: { xs: '100%', md: '88vw' },
+                    maxWidth: 1360,
+                    backgroundColor: 'background.paper',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
                     overflow: 'hidden',
                 }}
                 component={Card}
-                elevation={8}
+                elevation={0}
             >
                 <Grid size={{ xs: 0, md: 8 }}>
                     <HomeHeroComponent />

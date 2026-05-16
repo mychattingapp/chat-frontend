@@ -1,5 +1,11 @@
 const BASE_URL = import.meta.env.VITE_BASE_SERVER_URL;
 type ApiError = Error & { status?: number };
+type ApiErrorResponse = {
+    message?: string;
+    error?: {
+        message?: string;
+    };
+};
 
 let refreshPromise: Promise<unknown> | null = null;
 
@@ -15,8 +21,9 @@ const isApiError = (error: unknown): error is ApiError => {
 
 const handleResponse = async <T>(response: Response): Promise<T> => {
     if (!response.ok) {
-        const errorData = await response.json().catch(() => null) as { message?: string } | null;
-        throw createApiError(errorData?.message || "Request failed", response.status);
+        const errorData = await response.json().catch(() => null) as ApiErrorResponse | null;
+        const message = errorData?.error?.message || errorData?.message || "Request failed";
+        throw createApiError(message, response.status);
     }
     return response.json().catch(() => ({} as T));
 }
@@ -46,7 +53,7 @@ const apiRequest = async <T>(endpoint: string, options: RequestInit = {}, retry 
 
 const refreshToken = async () => {
   if (!refreshPromise) {
-    refreshPromise = fetch(`${BASE_URL}/auth/refresh`, {
+    refreshPromise = fetch(`${BASE_URL}/api/auth/refresh`, {
       method: 'GET',
       credentials: 'include',
     })

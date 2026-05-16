@@ -11,8 +11,9 @@ export default function Navbar({ onLogout }: NavbarProps) {
             position="static"
             elevation={0}
             sx={{
-                backgroundColor: '#fff',
-                borderBottom: '1px solid #e0e0e0',
+                backgroundColor: 'background.paper',
+                borderBottom: '1px solid',
+                borderColor: 'divider',
             }}
         >
             <Toolbar>
@@ -22,7 +23,7 @@ export default function Navbar({ onLogout }: NavbarProps) {
                     sx={{
                         flexGrow: 1,
                         fontWeight: 600,
-                        color: '#333',
+                        color: 'text.primary',
                     }}
                 >
                     ChatApp
@@ -33,9 +34,9 @@ export default function Navbar({ onLogout }: NavbarProps) {
                         onClick={onLogout}
                         startIcon={<LogoutIcon />}
                         sx={{
-                            color: '#666',
+                            color: 'text.secondary',
                             '&:hover': {
-                                backgroundColor: 'rgba(0, 0, 0, 0.04)',
+                                backgroundColor: 'action.hover',
                             }
                         }}
                     >
