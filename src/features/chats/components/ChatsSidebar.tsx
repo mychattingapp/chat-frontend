@@ -1,22 +1,134 @@
-import { Box, Typography } from "@mui/material";
+import AddCommentOutlinedIcon from '@mui/icons-material/AddCommentOutlined';
+import SearchIcon from '@mui/icons-material/Search';
+import { Avatar, Box, Button, CircularProgress, InputAdornment, ListItemButton, Stack, TextField, Typography } from "@mui/material";
+import type { Chat } from "../types";
 
-export default function ChatsSidebar() {
+type ChatsSidebarProps = {
+    chats: Chat[];
+    isLoading: boolean;
+    loadError: string | null;
+    selectedChatId?: string | null;
+    onRetry: () => void;
+    onSelectChat?: (chatId: string) => void;
+    onStartChat?: () => void;
+};
+
+export default function ChatsSidebar({
+    chats,
+    isLoading,
+    loadError,
+    selectedChatId,
+    onRetry,
+    onSelectChat,
+    onStartChat,
+}: ChatsSidebarProps) {
+    const getInitials = (name: string) => name
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map((part) => part[0])
+        .join("")
+        .toUpperCase();
+
     return (
-        <Box
-            sx={{
-                p: 2,
-                borderRadius: 1,
-                backgroundColor: 'background.default',
-                border: '1px dashed',
-                borderColor: 'divider',
-            }}
-        >
-            <Typography sx={{ color: 'text.primary', fontWeight: 800 }}>
-                Chats coming soon
-            </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
-                Conversations will appear here after chat messaging is wired in.
-            </Typography>
-        </Box>
+        <Stack spacing={2}>
+            <Button
+                fullWidth
+                variant="contained"
+                startIcon={<AddCommentOutlinedIcon />}
+                onClick={onStartChat}
+            >
+                Start chat
+            </Button>
+
+            <TextField
+                fullWidth
+                size="small"
+                placeholder="Search chats"
+                InputProps={{
+                    startAdornment: (
+                        <InputAdornment position="start">
+                            <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                    ),
+                }}
+            />
+
+            <Stack spacing={1}>
+                {isLoading && (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                        <CircularProgress size={28} />
+                    </Box>
+                )}
+
+                {!isLoading && loadError && (
+                    <Box
+                        sx={{
+                            p: 2,
+                            borderRadius: 1,
+                            backgroundColor: 'background.default',
+                            border: '1px solid',
+                            borderColor: 'divider',
+                        }}
+                    >
+                        <Typography sx={{ color: 'text.primary', fontWeight: 800 }}>
+                            Could not load chats.
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.75 }}>
+                            {loadError}
+                        </Typography>
+                        <Button variant="outlined" size="small" sx={{ mt: 1.5 }} onClick={onRetry}>
+                            Retry
+                        </Button>
+                    </Box>
+                )}
+
+                {!isLoading && !loadError && chats.length === 0 && (
+                    <Box
+                        sx={{
+                            p: 2,
+                            borderRadius: 1,
+                            backgroundColor: 'background.default',
+                            border: '1px dashed',
+                            borderColor: 'divider',
+                        }}
+                    >
+                        <Typography sx={{ color: 'text.primary', fontWeight: 800 }}>
+                            No chats yet
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.75 }}>
+                            Start a chat from your friends list.
+                        </Typography>
+                    </Box>
+                )}
+
+                {!isLoading && !loadError && chats.map((chat) => (
+                    <ListItemButton
+                        key={chat.id}
+                        selected={chat.id === selectedChatId}
+                        onClick={() => onSelectChat?.(chat.id)}
+                        sx={{
+                            alignItems: 'center',
+                            gap: 1.5,
+                            py: 1.5,
+                        }}
+                    >
+                        <Avatar sx={{ width: 42, height: 42, flexShrink: 0 }}>
+                            {getInitials(chat.title)}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+                                <Typography sx={{ color: 'text.primary', fontWeight: 800 }} noWrap>
+                                    {chat.title}
+                                </Typography>
+                            </Stack>
+                            <Typography variant="body2" sx={{ color: 'text.secondary' }} noWrap>
+                                {chat.lastMessage?.text ?? 'No messages yet'}
+                            </Typography>
+                        </Box>
+                    </ListItemButton>
+                ))}
+            </Stack>
+        </Stack>
     );
 }

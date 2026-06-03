@@ -3,12 +3,13 @@ import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LogoutConfirmDialog from '../../features/auth/components/LogoutConfirmDialog';
 import useOAuthLogin from "../../features/auth/hooks/useOAuthLogin";
-import { ChatsMain, ChatsSidebar } from "../../features/chats";
+import { ChatsMain, ChatsSidebar, StartChatDialog } from "../../features/chats";
 import { AddFriendDialog, FriendsMain, FriendsSidebar, useFriendRequests, type FriendView } from "../../features/friends";
 import { ProfileMain } from "../../features/home/components";
+import { useChats } from "../../features/chats/hooks/useChats";
 
 type HomeTab = 'chats' | 'friends' | 'profile';
 
@@ -45,10 +46,33 @@ export default function HomePage() {
     const [activeTab, setActiveTab] = useState<HomeTab>('chats');
     const [activeFriendView, setActiveFriendView] = useState<FriendView>('all');
     const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
+    const [isStartChatOpen, setIsStartChatOpen] = useState(false);
     const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
     const friends = useFriendRequests(activeTab === 'friends');
     const activeConfig = tabConfig[activeTab];
     const shouldShowSidebar = activeTab !== 'profile';
+    const chats = useChats();
+    const handleMessageFriend = (friendId: string) => {
+        setActiveTab('chats');
+        void chats.startDirectChat(friendId);
+    };
+    const handleOpenStartChat = () => {
+        setIsStartChatOpen(true);
+
+        if (friends.friends.length === 0 && !friends.isLoading) {
+            void friends.loadFriendRequests();
+        }
+    };
+    const handleStartChat = async (friendId: string) => {
+        setActiveTab('chats');
+        return chats.startDirectChat(friendId);
+    };
+
+    useEffect(() => {
+        if (activeTab === 'chats') {
+            void chats.loadChats();
+        }
+    }, [activeTab, chats.loadChats]);
 
     return (
         <Box
@@ -181,7 +205,15 @@ export default function HomePage() {
                     </Typography>
 
                     {activeTab === 'chats' ? (
-                        <ChatsSidebar />
+                        <ChatsSidebar
+                            chats={chats.chats}
+                            isLoading={chats.isLoadingChats}
+                            loadError={chats.loadError}
+                            onRetry={chats.loadChats}
+                            selectedChatId={chats.selectedChat?.id ?? null}
+                            onSelectChat={chats.selectChat}
+                            onStartChat={handleOpenStartChat}
+                        />
                     ) : (
                         <FriendsSidebar
                             activeFriendView={activeFriendView}
@@ -197,14 +229,23 @@ export default function HomePage() {
                 sx={{
                     flex: 1,
                     minWidth: 0,
-                    p: { xs: 3, md: 5 },
+                    p: activeTab === 'chats' ? 0 : { xs: 3, md: 5 },
                     display: 'flex',
                     flexDirection: 'column',
-                    overflow: 'auto',
+                    overflow: activeTab === 'chats' ? 'hidden' : 'auto',
                 }}
             >
-                {activeTab === 'chats' && <ChatsMain />}
-                {activeTab === 'friends' && (
+                {activeTab === 'chats' &&
+                    <ChatsMain
+                        chat={chats.selectedChat}
+                        messages={chats.messages}
+                        isLoadingMessages={chats.isLoadingMessages}
+                        loadError={chats.loadError}
+                        hasMoreMessages={chats.hasMoreMessages}
+                        loadMoreMessages={chats.loadMoreMessages}
+                        sendMessage={chats.sendMessage}
+                    />}
+                {activeTab === 'friends' &&
                     <FriendsMain
                         activeFriendView={activeFriendView}
                         friends={friends.friends}
@@ -219,8 +260,9 @@ export default function HomePage() {
                         onAddFriend={() => setIsAddFriendOpen(true)}
                         onAccept={friends.acceptFriendRequest}
                         onReject={friends.rejectFriendRequest}
+                        onMessageFriend={handleMessageFriend}
                     />
-                )}
+                }
                 {activeTab === 'profile' && <ProfileMain />}
             </Box>
 
@@ -229,6 +271,14 @@ export default function HomePage() {
                 isSending={friends.isSending}
                 onClose={() => setIsAddFriendOpen(false)}
                 onSend={friends.sendFriendRequest}
+            />
+            <StartChatDialog
+                open={isStartChatOpen}
+                friends={friends.friends}
+                isLoadingFriends={friends.isLoading}
+                isStartingChat={chats.isLoadingMessages}
+                onClose={() => setIsStartChatOpen(false)}
+                onStartChat={handleStartChat}
             />
             <LogoutConfirmDialog
                 open={isLogoutDialogOpen}

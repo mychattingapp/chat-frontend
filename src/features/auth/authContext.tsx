@@ -5,7 +5,10 @@ import type { AuthState } from "../../types/auth";
 
 const AuthContext = createContext<AuthState | null>(null);
 type AuthMeResponse = {
-    user: User | null;
+    success: boolean;
+    data: {
+        user: User | null;
+    };
 };
 
 function AuthProvider({ children }: { children: ReactNode }) {
@@ -16,8 +19,8 @@ function AuthProvider({ children }: { children: ReactNode }) {
     const refreshUser = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await apiRequest<AuthMeResponse>('api/auth/me', { method: 'GET' });
-            setUser(data.user ?? null);
+            const response = await apiRequest<AuthMeResponse>('api/auth/me', { method: 'GET' });
+            setUser(response.data.user ?? null);
         }
         catch {
             setUser(null);
