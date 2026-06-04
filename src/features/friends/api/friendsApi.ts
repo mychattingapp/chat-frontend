@@ -3,27 +3,37 @@ import type { Friend, FriendRequestStatus, ReceivedFriendRequest, SentFriendRequ
 
 type SentFriendRequestsResponse = {
     success: boolean;
-    FriendRequests: SentFriendRequest[];
+    data: {
+        friendRequests: SentFriendRequest[];
+    };
 };
 
 type ReceivedFriendRequestsResponse = {
     success: boolean;
-    FriendRequests: ReceivedFriendRequest[];
+    data: {
+        friendRequests: ReceivedFriendRequest[];
+    };
 };
 
 type SendFriendRequestResponse = {
     success: boolean;
-    friendRequest: SentFriendRequest;
+    data: {
+        friendRequest: SentFriendRequest;
+    };
 };
 
 type FriendRequestActionResponse = {
     success: boolean;
-    friendRequest: ReceivedFriendRequest;
+    data: {
+        friendRequest: ReceivedFriendRequest;
+    };
 };
 
 type AllFriendsResponse = {
     success: boolean;
-    Friends: Friend[];
+    data: {
+        friends: Friend[];
+    };
 };
 
 export const getAllFriends = async () => {
@@ -31,7 +41,7 @@ export const getAllFriends = async () => {
         method: 'GET',
     });
 
-    return response.Friends;
+    return response.data.friends;
 };
 
 export const getSentFriendRequests = async (status: FriendRequestStatus = 'PENDING') => {
@@ -39,7 +49,7 @@ export const getSentFriendRequests = async (status: FriendRequestStatus = 'PENDI
         method: 'GET',
     });
 
-    return response.FriendRequests;
+    return response.data.friendRequests;
 };
 
 export const getReceivedFriendRequests = async (status: FriendRequestStatus = 'PENDING') => {
@@ -47,7 +57,7 @@ export const getReceivedFriendRequests = async (status: FriendRequestStatus = 'P
         method: 'GET',
     });
 
-    return response.FriendRequests;
+    return response.data.friendRequests;
 };
 
 export const sendFriendRequest = async (recipientEmail: string) => {
@@ -59,7 +69,7 @@ export const sendFriendRequest = async (recipientEmail: string) => {
         body: JSON.stringify({ recipientEmail }),
     });
 
-    return response.friendRequest;
+    return response.data.friendRequest;
 };
 
 export const acceptFriendRequest = async (friendRequestId: string) => {
@@ -67,7 +77,7 @@ export const acceptFriendRequest = async (friendRequestId: string) => {
         method: 'PATCH',
     });
 
-    return response.friendRequest;
+    return response.data.friendRequest;
 };
 
 export const rejectFriendRequest = async (friendRequestId: string) => {
@@ -75,5 +85,5 @@ export const rejectFriendRequest = async (friendRequestId: string) => {
         method: 'PATCH',
     });
 
-    return response.friendRequest;
+    return response.data.friendRequest;
 };

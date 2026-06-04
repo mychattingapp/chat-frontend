@@ -24,6 +24,7 @@ export type ReceivedFriendRequest = {
 
 export type FriendListItem = {
     id: string;
+    friendshipId?: string;
     username: string;
     email: string;
     createdAt: string;

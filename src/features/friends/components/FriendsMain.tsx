@@ -36,6 +36,7 @@ type FriendsMainProps = {
     onAddFriend: () => void;
     onAccept: (friendRequestId: string) => Promise<void>;
     onReject: (friendRequestId: string) => Promise<void>;
+    onMessageFriend?: (friendId: string) => void;
 };
 
 const mapReceivedRequest = (request: ReceivedFriendRequest): FriendListItem => ({
@@ -53,7 +54,8 @@ const mapSentRequest = (request: SentFriendRequest): FriendListItem => ({
 });
 
 const mapFriend = (friend: Friend): FriendListItem => ({
-    id: friend.friendshipId,
+    id: friend.id,
+    friendshipId: friend.friendshipId,
     username: friend.username,
     email: friend.email,
     createdAt: '',
@@ -74,6 +76,7 @@ export default function FriendsMain({
     onAddFriend,
     onAccept,
     onReject,
+    onMessageFriend,
 }: FriendsMainProps) {
     const content = titles[activeFriendView];
     const items = activeFriendView === 'all'
@@ -167,6 +170,7 @@ export default function FriendsMain({
                         actionRequestId={actionRequestId}
                         onAccept={onAccept}
                         onReject={onReject}
+                        onMessage={onMessageFriend}
                     />
                     {(activeFriendView === 'received' || activeFriendView === 'sent') && (
                         <Box sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>

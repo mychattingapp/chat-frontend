@@ -1,4 +1,5 @@
-import { Avatar, Box, Button, CircularProgress, Stack, Typography } from "@mui/material";
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import { Avatar, Box, Button, CircularProgress, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import type { FriendListItem, FriendView } from "../types";
 
 type FriendListProps = {
@@ -8,6 +9,7 @@ type FriendListProps = {
     actionRequestId: string | null;
     onAccept: (friendRequestId: string) => Promise<void>;
     onReject: (friendRequestId: string) => Promise<void>;
+    onMessage?: (friendId: string) => void;
     isReadOnly?: boolean;
     emptyMessage?: string;
 };
@@ -19,6 +21,7 @@ export default function FriendList({
     actionRequestId,
     onAccept,
     onReject,
+    onMessage,
     isReadOnly = false,
     emptyMessage,
 }: FriendListProps) {
@@ -93,6 +96,21 @@ export default function FriendList({
                                 </Typography>
                             </Box>
                         </Stack>
+                        {type === 'all' && !isReadOnly && (
+                            <Tooltip title="Message">
+                                <IconButton
+                                    aria-label={`Message ${item.username}`}
+                                    onClick={() => onMessage?.(item.id)}
+                                    sx={{
+                                        width: 38,
+                                        height: 38,
+                                        flexShrink: 0,
+                                    }}
+                                >
+                                    <ChatBubbleOutlineIcon fontSize="small" />
+                                </IconButton>
+                            </Tooltip>
+                        )}
                         {type === 'received' && !isReadOnly && (
                             <Stack direction="row" spacing={1}>
                                 <Button
