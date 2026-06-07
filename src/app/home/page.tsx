@@ -240,6 +240,7 @@ export default function HomePage() {
                         chat={chats.selectedChat}
                         messages={chats.messages}
                         isLoadingMessages={chats.isLoadingMessages}
+                        isSendingMessage={chats.isSendingMessage}
                         loadError={chats.loadError}
                         hasMoreMessages={chats.hasMoreMessages}
                         loadMoreMessages={chats.loadMoreMessages}
