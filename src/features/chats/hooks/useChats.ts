@@ -1,12 +1,36 @@
 import type { Chat, ChatMessage, MessageCursor } from '../types';
 import { useCallback, useRef, useState } from "react";
 import { getChatMessages, getChats, openDirectChat, sendChatMessage } from "../api/chatsApi";
+import { useChatSocket } from './useChatSocket';
+import type { NewSocketMessageEvent, SendSocketMessagePayload } from '../socket/chatSocketTypes';
 
 type MessageCacheEntry = {
     messages: ChatMessage[];
     nextCursor: MessageCursor | null;
     hasMoreMessages: boolean;
 };
+
+const appendMessageIfMissing = (
+    currentMessages: ChatMessage[],
+    message: ChatMessage
+) => {
+    if (currentMessages.some((currentMessage) => currentMessage.id === message.id)) {
+        return currentMessages;
+    }
+
+    return [...currentMessages, message];
+};
+
+const mergeMessagesById = (messages: ChatMessage[]) =>
+    [...new Map(messages.map((message) => [message.id, message])).values()].sort((a, b) => {
+        const timeDifference = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        return timeDifference || a.id.localeCompare(b.id);
+    });
+
+const upsertChatToTop = (currentChats: Chat[], chat: Chat) => [
+    chat,
+    ...currentChats.filter((currentChat) => currentChat.id !== chat.id),
+];
 
 export function useChats() {
     const [chats, setChats] = useState<Chat[]>([]);
@@ -16,10 +40,71 @@ export function useChats() {
     const [hasMoreMessages, setHasMoreMessages] = useState(false);
     const [isLoadingChats, setIsLoadingChats] = useState(false);
     const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+    const [isSendingMessage, setIsSendingMessage] = useState(false);
     const [hasLoadedChats, setHasLoadedChats] = useState(false);
     const [messageCacheByChatId, setMessageCacheByChatId] = useState<Record<string, MessageCacheEntry>>({});
     const [error, setError] = useState<string | null>(null);
     const activeMessageRequestChatIdRef = useRef<string | null>(null);
+    const isSendingMessageRef = useRef(false);
+
+    const handleNewSocketMessage = useCallback((event: NewSocketMessageEvent) => {
+        const { chatId, message } = event;
+
+        setMessages((currentMessages) => {
+            if (activeMessageRequestChatIdRef.current !== chatId) {
+                return currentMessages;
+            }
+
+            return appendMessageIfMissing(currentMessages, message);
+        });
+
+        setMessageCacheByChatId((currentCache) => {
+            const currentChatCache = currentCache[chatId];
+
+            if (!currentChatCache) {
+                return currentCache;
+            }
+
+            return {
+                ...currentCache,
+                [chatId]: {
+                    ...currentChatCache,
+                    messages: appendMessageIfMissing(currentChatCache.messages, message),
+                },
+            };
+        });
+
+        setChats((currentChats) => {
+            const chat = currentChats.find((currentChat) => currentChat.id === chatId);
+
+            if (!chat) {
+                return currentChats;
+            }
+
+            return [
+                {
+                    ...chat,
+                    lastMessage: message,
+                    updatedAt: message.createdAt,
+                },
+                ...currentChats.filter((currentChat) => currentChat.id !== chatId)
+            ];
+        });
+    }, []);
+
+    const handleSocketError = useCallback((message: string) => {
+        setError(message);
+    }, []);
+
+    const handleJoinedSocketChat = useCallback((chat: Chat) => {
+        setChats((currentChats) => upsertChatToTop(currentChats, chat));
+    }, []);
+
+    const { isConnected, joinSocketChat, sendSocketMessage } = useChatSocket({
+        onJoinedChat: handleJoinedSocketChat,
+        onNewMessage: handleNewSocketMessage,
+        onError: handleSocketError
+    });
 
     const loadChats = useCallback(async (force = false) => {
         if (!force && hasLoadedChats) {
@@ -74,17 +159,22 @@ export function useChats() {
                 return;
             }
 
-            setMessages(messagePage.messages);
+            setMessages((currentMessages) => {
+                const mergedMessages = mergeMessagesById([...messagePage.messages, ...currentMessages]);
+
+                setMessageCacheByChatId((currentCache) => ({
+                    ...currentCache,
+                    [chatId]: {
+                        messages: mergedMessages,
+                        nextCursor: messagePage.nextCursor,
+                        hasMoreMessages: messagePage.hasMore,
+                    },
+                }));
+
+                return mergedMessages;
+            });
             setNextCursor(messagePage.nextCursor);
             setHasMoreMessages(messagePage.hasMore);
-            setMessageCacheByChatId((currentCache) => ({
-                ...currentCache,
-                [chatId]: {
-                    messages: messagePage.messages,
-                    nextCursor: messagePage.nextCursor,
-                    hasMoreMessages: messagePage.hasMore,
-                },
-            }));
         }
         catch (err) {
             setError(err instanceof Error ? err.message : "Failed to load messages.");
@@ -116,8 +206,13 @@ export function useChats() {
                 setHasMoreMessages(false);
             }
             setChats((currentChats) => {
-                const withoutOpenedChat = currentChats.filter((currentChat) => currentChat.id !== chat.id);
-                return [chat, ...withoutOpenedChat];
+                if (currentChats.some((currentChat) => currentChat.id === chat.id)) {
+                    return currentChats.map((currentChat) =>
+                        currentChat.id === chat.id ? chat : currentChat
+                    );
+                }
+
+                return [chat, ...currentChats];
             });
             setHasLoadedChats(true);
 
@@ -128,17 +223,22 @@ export function useChats() {
                     return false;
                 }
 
-                setMessages(messagePage.messages);
+                setMessages((currentMessages) => {
+                    const mergedMessages = mergeMessagesById([...messagePage.messages, ...currentMessages]);
+
+                    setMessageCacheByChatId((currentCache) => ({
+                        ...currentCache,
+                        [chat.id]: {
+                            messages: mergedMessages,
+                            nextCursor: messagePage.nextCursor,
+                            hasMoreMessages: messagePage.hasMore,
+                        },
+                    }));
+
+                    return mergedMessages;
+                });
                 setNextCursor(messagePage.nextCursor);
                 setHasMoreMessages(messagePage.hasMore);
-                setMessageCacheByChatId((currentCache) => ({
-                    ...currentCache,
-                    [chat.id]: {
-                        messages: messagePage.messages,
-                        nextCursor: messagePage.nextCursor,
-                        hasMoreMessages: messagePage.hasMore,
-                    },
-                }));
             }
             return true;
         }
@@ -191,21 +291,30 @@ export function useChats() {
         finally {
             setIsLoadingMessages(false);
         }
-        
+
     }, [selectedChat, nextCursor]);
 
     const sendMessage = useCallback(async (text: string) => {
-        if (!selectedChat) return false;
+        if (!selectedChat || isSendingMessageRef.current) return false;
 
         const trimmedText = text.trim();
         if (!trimmedText) return false;
 
+        isSendingMessageRef.current = true;
+        setIsSendingMessage(true);
         setError(null);
 
         try {
-            const sentMessage = await sendChatMessage(selectedChat.id, trimmedText);
+            const payload: SendSocketMessagePayload = {
+                chatId: selectedChat.id,
+                text: trimmedText
+            };
+
+            const sentMessage = isConnected
+                ? await sendSocketMessage(payload)
+                : await sendChatMessage(selectedChat.id, trimmedText);
             setMessages((currentMessages) => {
-                const updatedMessages = [...currentMessages, sentMessage];
+                const updatedMessages = appendMessageIfMissing(currentMessages, sentMessage);
 
                 setMessageCacheByChatId((currentCache) => ({
                     ...currentCache,
@@ -239,8 +348,12 @@ export function useChats() {
             setError(err instanceof Error ? err.message : "Failed to send message.");
             return false;
         }
+        finally {
+            isSendingMessageRef.current = false;
+            setIsSendingMessage(false);
+        }
 
-    }, [hasMoreMessages, nextCursor, selectedChat]);
+    }, [hasMoreMessages, isConnected, nextCursor, selectedChat, sendSocketMessage]);
 
     return {
         chats,
@@ -250,6 +363,9 @@ export function useChats() {
         hasMoreMessages,
         isLoadingChats,
         isLoadingMessages,
+        isSendingMessage,
+        isChatSocketConnected: isConnected,
+        joinSocketChat,
         loadError: error,
         loadChats,
         selectChat,

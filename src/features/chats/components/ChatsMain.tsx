@@ -9,6 +9,7 @@ type ChatsMainProps = {
     chat: Chat | null;
     messages: ChatMessage[];
     isLoadingMessages: boolean;
+    isSendingMessage: boolean;
     loadError: string | null;
     hasMoreMessages: boolean;
     loadMoreMessages: () => Promise<boolean>;
@@ -46,6 +47,7 @@ export default function ChatsMain({
     hasMoreMessages,
     messages,
     isLoadingMessages,
+    isSendingMessage,
     loadError,
     loadMoreMessages,
     sendMessage,
@@ -68,7 +70,7 @@ export default function ChatsMain({
 
     const handleSendMessage = async () => {
         const trimmedContent = messageContent.trim();
-        if (!trimmedContent) return;
+        if (!trimmedContent || isSendingMessage) return;
 
         wasNearBottomRef.current = isNearBottom();
         const didSend = await sendMessage(trimmedContent);
@@ -369,7 +371,9 @@ export default function ChatsMain({
                     onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
-                            handleSendMessage();
+                            if (!isSendingMessage) {
+                                void handleSendMessage();
+                            }
                         }
                     }}
                 />
@@ -377,7 +381,7 @@ export default function ChatsMain({
                     <span>
                         <IconButton
                             aria-label="Send message"
-                            disabled={!messageContent.trim()}
+                            disabled={!messageContent.trim() || isSendingMessage}
                             sx={{
                                 width: 40,
                                 height: 40,
@@ -388,7 +392,7 @@ export default function ChatsMain({
                                     color: 'rgba(226, 232, 240, 0.32)',
                                 },
                             }}
-                            onClick={() => handleSendMessage()}
+                            onClick={() => void handleSendMessage()}
                         >
                             <SendIcon fontSize="small" />
                         </IconButton>
