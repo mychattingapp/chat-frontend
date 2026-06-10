@@ -1,7 +1,8 @@
 import AddCommentOutlinedIcon from '@mui/icons-material/AddCommentOutlined';
 import SearchIcon from '@mui/icons-material/Search';
-import { Avatar, Box, Button, CircularProgress, InputAdornment, ListItemButton, Stack, TextField, Typography } from "@mui/material";
+import { Avatar, Badge, Box, Button, CircularProgress, InputAdornment, ListItemButton, Stack, TextField, Typography } from "@mui/material";
 import type { Chat } from "../types";
+import { formatRelativeChatDate } from '../utils/dateFormatters';
 
 type ChatsSidebarProps = {
     chats: Chat[];
@@ -117,14 +118,40 @@ export default function ChatsSidebar({
                             {getInitials(chat.title)}
                         </Avatar>
                         <Box sx={{ minWidth: 0, flex: 1 }}>
-                            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
-                                <Typography sx={{ color: 'text.primary', fontWeight: 800 }} noWrap>
+                            <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ minWidth: 0 }}>
+                                <Typography sx={{ color: 'text.primary', fontWeight: 800, minWidth: 0 }} noWrap>
                                     {chat.title}
                                 </Typography>
+                                <Typography
+                                    variant="caption"
+                                    sx={{ color: 'text.secondary', flexShrink: 0, lineHeight: 1.4 }}
+                                >
+                                    {formatRelativeChatDate(chat.lastMessage?.createdAt ?? chat.updatedAt, true)}
+                                </Typography>
                             </Stack>
-                            <Typography variant="body2" sx={{ color: 'text.secondary' }} noWrap>
-                                {chat.lastMessage?.text ?? 'No messages yet'}
-                            </Typography>
+                            <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
+                                <Typography variant="body2" sx={{ color: chat.unreadCount > 0 ? 'text.primary' : 'text.secondary', fontWeight: chat.unreadCount > 0 ? 700 : 400, minWidth: 0, flex: 1 }} noWrap>
+                                    {chat.lastMessage?.text ?? 'No messages yet'}
+                                </Typography>
+                                {chat.unreadCount > 0 && (
+                                    <Badge
+                                        badgeContent={chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                                        color="primary"
+                                        sx={{
+                                            flexShrink: 0,
+                                            '& .MuiBadge-badge': {
+                                                position: 'static',
+                                                transform: 'none',
+                                                minWidth: 20,
+                                                height: 20,
+                                                px: 0.75,
+                                                fontSize: 11,
+                                                fontWeight: 800,
+                                            },
+                                        }}
+                                    />
+                                )}
+                            </Stack>
                         </Box>
                     </ListItemButton>
                 ))}

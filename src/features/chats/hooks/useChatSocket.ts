@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import useAuth from "../../auth/hooks/useAuth";
 import type { Chat, ChatMessage } from "../types";
-import type { ClientToServerEvents, NewSocketMessageEvent, SendSocketMessagePayload, ServerToClientEvents } from "../socket/chatSocketTypes";
+import type { ClientToServerEvents, MarkSocketChatReadPayload, NewSocketMessageEvent, SendSocketMessagePayload, ServerToClientEvents } from "../socket/chatSocketTypes";
 
 const BASE_URL = import.meta.env.VITE_BASE_SERVER_URL;
 
@@ -84,9 +84,28 @@ export function useChatSocket({ onNewMessage, onJoinedChat, onError }: UseChatSo
         return response.data.message;
     }, [onError]);
 
+    const markSocketChatRead = useCallback(async (payload: MarkSocketChatReadPayload): Promise<boolean> => {
+        const socket = socketRef.current;
+
+        if (!socket || !socket.connected) {
+            return false;
+        }
+
+        const response = await socket.emitWithAck("chat:read", payload);
+
+        if (!response.success) {
+            const message = response.error?.message ?? "Failed to mark chat as read.";
+            onError(message);
+            return false;
+        }
+
+        return true;
+    }, [onError]);
+
     return {
         isConnected,
         joinSocketChat,
         sendSocketMessage,
+        markSocketChatRead,
     };
 }

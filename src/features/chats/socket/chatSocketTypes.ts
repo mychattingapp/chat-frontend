@@ -18,6 +18,11 @@ export type JoinSocketChatPayload = {
     chatId: string;
 };
 
+export type MarkSocketChatReadPayload = {
+    chatId: string;
+    lastReadMessageId: string;
+};
+
 export type SendSocketMessageAck = {
     success: boolean;
     data?: {
@@ -40,6 +45,14 @@ export type JoinSocketChatAck = {
     };
 };
 
+export type MarkSocketChatReadAck = {
+    success: boolean;
+    error?: {
+        code: string;
+        message: string;
+    };
+};
+
 export type ServerToClientEvents = {
     "message:new": (event: NewSocketMessageEvent) => void;
     "chat:new": (event: NewSocketChatEvent) => void;
@@ -53,5 +66,9 @@ export type ClientToServerEvents = {
     "chat:join": (
         payload: JoinSocketChatPayload,
         ack: (response: JoinSocketChatAck) => void
+    ) => void;
+    "chat:read": (
+        payload: MarkSocketChatReadPayload,
+        ack: (response: MarkSocketChatReadAck) => void
     ) => void;
 };
