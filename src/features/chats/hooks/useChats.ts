@@ -1,8 +1,10 @@
 import type { Chat, ChatMessage, MessageCursor } from '../types';
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getChatMessages, getChats, openDirectChat, sendChatMessage } from "../api/chatsApi";
 import { useChatSocket } from './useChatSocket';
 import type { NewSocketMessageEvent, SendSocketMessagePayload } from '../socket/chatSocketTypes';
+import useAuth from '../../auth/hooks/useAuth';
+import { playMessageNotificationSound } from '../utils/notificationSound';
 
 type MessageCacheEntry = {
     messages: ChatMessage[];
@@ -32,7 +34,42 @@ const upsertChatToTop = (currentChats: Chat[], chat: Chat) => [
     ...currentChats.filter((currentChat) => currentChat.id !== chat.id),
 ];
 
-export function useChats() {
+const getUnreadDividerMessageId = (chat: Chat, messages: ChatMessage[], currentUserId?: string) => {
+    if (chat.unreadCount <= 0 || messages.length === 0 || !currentUserId) {
+        return null;
+    }
+
+    const isUnreadCandidate = (message: ChatMessage) => message.senderId !== currentUserId;
+
+    if (chat.lastReadMessageId) {
+        const lastReadMessageIndex = messages.findIndex((message) => message.id === chat.lastReadMessageId);
+
+        if (lastReadMessageIndex >= 0) {
+            return messages.slice(lastReadMessageIndex + 1).find(isUnreadCandidate)?.id ?? null;
+        }
+    }
+
+    let unreadMessagesSeen = 0;
+
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const message = messages[index];
+
+        if (!message || !isUnreadCandidate(message)) {
+            continue;
+        }
+
+        unreadMessagesSeen += 1;
+
+        if (unreadMessagesSeen === chat.unreadCount) {
+            return message.id;
+        }
+    }
+
+    return null;
+};
+
+export function useChats(isChatViewActive: boolean) {
+    const { user } = useAuth();
     const [chats, setChats] = useState<Chat[]>([]);
     const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -43,12 +80,137 @@ export function useChats() {
     const [isSendingMessage, setIsSendingMessage] = useState(false);
     const [hasLoadedChats, setHasLoadedChats] = useState(false);
     const [messageCacheByChatId, setMessageCacheByChatId] = useState<Record<string, MessageCacheEntry>>({});
+    const [newMessagesDividerMessageId, setNewMessagesDividerMessageId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const activeMessageRequestChatIdRef = useRef<string | null>(null);
+    const selectedChatIdRef = useRef<string | null>(null);
+    const isChatViewActiveRef = useRef(isChatViewActive);
+    const messagesRef = useRef<ChatMessage[]>([]);
     const isSendingMessageRef = useRef(false);
+    const markSocketChatReadRef = useRef<((payload: { chatId: string; lastReadMessageId: string }) => Promise<boolean>) | null>(null);
+    const pendingReadRef = useRef<{ chatId: string; lastReadMessageId: string } | null>(null);
+    const isFlushingPendingReadRef = useRef(false);
+    const readDebounceTimeoutRef = useRef<number | null>(null);
+    const dividerTimeoutRef = useRef<number | null>(null);
+    const hiddenUnreadDividerByChatIdRef = useRef<Record<string, string>>({});
+
+    const clearReadDebounceTimeout = useCallback(() => {
+        if (readDebounceTimeoutRef.current !== null) {
+            window.clearTimeout(readDebounceTimeoutRef.current);
+            readDebounceTimeoutRef.current = null;
+        }
+    }, []);
+
+    const flushPendingRead = useCallback(() => {
+        const pendingRead = pendingReadRef.current;
+        const markSocketChatRead = markSocketChatReadRef.current;
+
+        clearReadDebounceTimeout();
+
+        if (!pendingRead || !markSocketChatRead || isFlushingPendingReadRef.current) {
+            return;
+        }
+
+        isFlushingPendingReadRef.current = true;
+
+        void markSocketChatRead(pendingRead).then((didMarkRead) => {
+            const currentPendingRead = pendingReadRef.current;
+
+            if (!currentPendingRead) {
+                return;
+            }
+
+            const isSamePendingRead =
+                currentPendingRead.chatId === pendingRead.chatId &&
+                currentPendingRead.lastReadMessageId === pendingRead.lastReadMessageId;
+
+            if (didMarkRead && isSamePendingRead) {
+                pendingReadRef.current = null;
+                return;
+            }
+        }).finally(() => {
+            const currentPendingRead = pendingReadRef.current;
+            const hasNewerPendingRead = !!currentPendingRead && (
+                currentPendingRead.chatId !== pendingRead.chatId ||
+                currentPendingRead.lastReadMessageId !== pendingRead.lastReadMessageId
+            );
+
+            isFlushingPendingReadRef.current = false;
+
+            if (hasNewerPendingRead) {
+                window.setTimeout(() => {
+                    flushPendingRead();
+                }, 0);
+            }
+        });
+    }, [clearReadDebounceTimeout]);
+
+    const scheduleMarkChatRead = useCallback((chatId: string, lastReadMessageId: string) => {
+        pendingReadRef.current = { chatId, lastReadMessageId };
+        clearReadDebounceTimeout();
+        readDebounceTimeoutRef.current = window.setTimeout(() => {
+            flushPendingRead();
+        }, 350);
+    }, [clearReadDebounceTimeout, flushPendingRead]);
+
+    const clearChatUnread = useCallback((chatId: string, lastReadMessageId?: string | null) => {
+        setChats((currentChats) => currentChats.map((chat) =>
+            chat.id === chatId
+                ? {
+                    ...chat,
+                    unreadCount: 0,
+                    lastReadMessageId: lastReadMessageId ?? chat.lastReadMessageId,
+                }
+                : chat
+        ));
+
+        setSelectedChat((currentChat) =>
+            currentChat?.id === chatId
+                ? {
+                    ...currentChat,
+                    unreadCount: 0,
+                    lastReadMessageId: lastReadMessageId ?? currentChat.lastReadMessageId,
+                }
+                : currentChat
+        );
+    }, []);
+
+    const showNewMessagesDivider = useCallback((dividerMessageId: string | null) => {
+        setNewMessagesDividerMessageId(dividerMessageId);
+
+        if (dividerTimeoutRef.current !== null) {
+            window.clearTimeout(dividerTimeoutRef.current);
+            dividerTimeoutRef.current = null;
+        }
+
+        if (dividerMessageId) {
+            dividerTimeoutRef.current = window.setTimeout(() => {
+                setNewMessagesDividerMessageId(null);
+                dividerTimeoutRef.current = null;
+            }, 4000);
+        }
+    }, []);
+
+    const showUnreadDivider = useCallback((chat: Chat, loadedMessages: ChatMessage[]) => {
+        showNewMessagesDivider(getUnreadDividerMessageId(chat, loadedMessages, user?.id));
+    }, [showNewMessagesDivider, user?.id]);
 
     const handleNewSocketMessage = useCallback((event: NewSocketMessageEvent) => {
         const { chatId, message } = event;
+        const isOwnMessage = message.senderId === user?.id;
+        const isSelectedChat = selectedChatIdRef.current === chatId;
+        const isViewingSelectedChat = isSelectedChat && isChatViewActiveRef.current;
+        const isTabHidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+        const shouldMarkRead = !isOwnMessage && isViewingSelectedChat && !isTabHidden;
+        const shouldShowHiddenDividerOnReturn = !isOwnMessage && isViewingSelectedChat && isTabHidden;
+
+        if (!isOwnMessage && (isTabHidden || !isViewingSelectedChat)) {
+            playMessageNotificationSound();
+        }
+
+        if (shouldShowHiddenDividerOnReturn && !hiddenUnreadDividerByChatIdRef.current[chatId]) {
+            hiddenUnreadDividerByChatIdRef.current[chatId] = message.id;
+        }
 
         setMessages((currentMessages) => {
             if (activeMessageRequestChatIdRef.current !== chatId) {
@@ -76,6 +238,7 @@ export function useChats() {
 
         setChats((currentChats) => {
             const chat = currentChats.find((currentChat) => currentChat.id === chatId);
+            const shouldIncrementUnread = !isOwnMessage && (!isViewingSelectedChat || isTabHidden);
 
             if (!chat) {
                 return currentChats;
@@ -86,11 +249,18 @@ export function useChats() {
                     ...chat,
                     lastMessage: message,
                     updatedAt: message.createdAt,
+                    unreadCount: shouldIncrementUnread ? chat.unreadCount + 1 : 0,
+                    lastReadMessageId: shouldMarkRead ? message.id : chat.lastReadMessageId,
                 },
                 ...currentChats.filter((currentChat) => currentChat.id !== chatId)
             ];
         });
-    }, []);
+
+        if (shouldMarkRead) {
+            clearChatUnread(chatId, message.id);
+            scheduleMarkChatRead(chatId, message.id);
+        }
+    }, [clearChatUnread, scheduleMarkChatRead, user?.id]);
 
     const handleSocketError = useCallback((message: string) => {
         setError(message);
@@ -100,11 +270,96 @@ export function useChats() {
         setChats((currentChats) => upsertChatToTop(currentChats, chat));
     }, []);
 
-    const { isConnected, joinSocketChat, sendSocketMessage } = useChatSocket({
+    const { isConnected, joinSocketChat, sendSocketMessage, markSocketChatRead } = useChatSocket({
         onJoinedChat: handleJoinedSocketChat,
         onNewMessage: handleNewSocketMessage,
         onError: handleSocketError
     });
+
+    useEffect(() => {
+        selectedChatIdRef.current = selectedChat?.id ?? null;
+
+        if (!selectedChat) {
+            activeMessageRequestChatIdRef.current = null;
+        }
+    }, [selectedChat?.id]);
+
+    useEffect(() => {
+        isChatViewActiveRef.current = isChatViewActive;
+    }, [isChatViewActive]);
+
+    useEffect(() => {
+        if (!isChatViewActive || document.visibilityState !== 'visible') {
+            return;
+        }
+
+        const chatId = selectedChatIdRef.current;
+        const latestMessageId = messages[messages.length - 1]?.id;
+
+        if (!chatId || !latestMessageId) {
+            return;
+        }
+
+        const currentChat = chats.find((chat) => chat.id === chatId);
+
+        if (!currentChat || currentChat.unreadCount <= 0) {
+            return;
+        }
+
+        showUnreadDivider(currentChat, messages);
+        clearChatUnread(chatId, latestMessageId);
+        scheduleMarkChatRead(chatId, latestMessageId);
+    }, [chats, clearChatUnread, isChatViewActive, messages, scheduleMarkChatRead, showUnreadDivider]);
+
+    useEffect(() => {
+        messagesRef.current = messages;
+    }, [messages]);
+
+    useEffect(() => {
+        markSocketChatReadRef.current = markSocketChatRead;
+    }, [markSocketChatRead]);
+
+    useEffect(() => {
+        if (isConnected) {
+            flushPendingRead();
+        }
+    }, [flushPendingRead, isConnected]);
+
+    useEffect(() => () => {
+        flushPendingRead();
+
+        if (dividerTimeoutRef.current !== null) {
+            window.clearTimeout(dividerTimeoutRef.current);
+            dividerTimeoutRef.current = null;
+        }
+    }, [flushPendingRead]);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState !== 'visible') {
+                return;
+            }
+
+            const chatId = selectedChatIdRef.current;
+            const latestMessageId = messages[messages.length - 1]?.id;
+
+            if (!chatId || !latestMessageId || !isChatViewActiveRef.current) {
+                return;
+            }
+
+            const hiddenDividerMessageId = hiddenUnreadDividerByChatIdRef.current[chatId] ?? null;
+            delete hiddenUnreadDividerByChatIdRef.current[chatId];
+            showNewMessagesDivider(hiddenDividerMessageId);
+            clearChatUnread(chatId, latestMessageId);
+            scheduleMarkChatRead(chatId, latestMessageId);
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [clearChatUnread, messages, scheduleMarkChatRead, showNewMessagesDivider]);
 
     const loadChats = useCallback(async (force = false) => {
         if (!force && hasLoadedChats) {
@@ -118,6 +373,57 @@ export function useChats() {
             const loadedChats = await getChats("DIRECT");
             setChats(loadedChats);
             setHasLoadedChats(true);
+
+            const selectedChatId = selectedChatIdRef.current;
+            const refreshedSelectedChat = selectedChatId
+                ? loadedChats.find((chat) => chat.id === selectedChatId)
+                : null;
+
+            if (refreshedSelectedChat) {
+                setSelectedChat((currentChat) =>
+                    currentChat?.id === refreshedSelectedChat.id
+                        ? {
+                            ...refreshedSelectedChat,
+                            unreadCount: currentChat.unreadCount,
+                            lastReadMessageId: currentChat.lastReadMessageId,
+                        }
+                        : currentChat
+                );
+
+                const latestKnownMessageId = messagesRef.current[messagesRef.current.length - 1]?.id;
+                const refreshedLastMessageId = refreshedSelectedChat.lastMessage?.id;
+
+                if (refreshedLastMessageId && refreshedLastMessageId !== latestKnownMessageId) {
+                    const messagePage = await getChatMessages(refreshedSelectedChat.id);
+
+                    if (selectedChatIdRef.current !== refreshedSelectedChat.id) {
+                        return;
+                    }
+
+                    const mergedMessages = mergeMessagesById([...messagePage.messages, ...messagesRef.current]);
+                    setMessages(mergedMessages);
+                    messagesRef.current = mergedMessages;
+                    setNextCursor(messagePage.nextCursor);
+                    setHasMoreMessages(messagePage.hasMore);
+                    setMessageCacheByChatId((currentCache) => ({
+                        ...currentCache,
+                        [refreshedSelectedChat.id]: {
+                            messages: mergedMessages,
+                            nextCursor: messagePage.nextCursor,
+                            hasMoreMessages: messagePage.hasMore,
+                        },
+                    }));
+
+                    showUnreadDivider(refreshedSelectedChat, mergedMessages);
+
+                    const latestMessageId = mergedMessages[mergedMessages.length - 1]?.id;
+
+                    if (latestMessageId && document.visibilityState === 'visible' && isChatViewActiveRef.current) {
+                        clearChatUnread(refreshedSelectedChat.id, latestMessageId);
+                        scheduleMarkChatRead(refreshedSelectedChat.id, latestMessageId);
+                    }
+                }
+            }
         }
         catch (err) {
             setError(err instanceof Error ? err.message : "Failed to load chats.");
@@ -125,7 +431,7 @@ export function useChats() {
         finally {
             setIsLoadingChats(false);
         }
-    }, [hasLoadedChats]);
+    }, [clearChatUnread, hasLoadedChats, scheduleMarkChatRead, showUnreadDivider]);
 
     const selectChat = useCallback(async (chatId: string) => {
         if (selectedChat?.id === chatId) {
@@ -133,11 +439,14 @@ export function useChats() {
         }
 
         setError(null);
+        flushPendingRead();
 
         try {
             const chat = chats.find((currentChat) => currentChat.id === chatId) ?? null;
-            setSelectedChat(chat);
+            setSelectedChat(chat ? { ...chat, unreadCount: 0 } : null);
             activeMessageRequestChatIdRef.current = chatId;
+            selectedChatIdRef.current = chatId;
+            clearChatUnread(chatId);
 
             const cachedMessages = messageCacheByChatId[chatId];
 
@@ -145,6 +454,14 @@ export function useChats() {
                 setMessages(cachedMessages.messages);
                 setNextCursor(cachedMessages.nextCursor);
                 setHasMoreMessages(cachedMessages.hasMoreMessages);
+                if (chat) {
+                    showUnreadDivider(chat, cachedMessages.messages);
+                }
+                const latestMessageId = cachedMessages.messages[cachedMessages.messages.length - 1]?.id;
+                if (latestMessageId) {
+                    clearChatUnread(chatId, latestMessageId);
+                    scheduleMarkChatRead(chatId, latestMessageId);
+                }
                 return;
             }
 
@@ -171,6 +488,15 @@ export function useChats() {
                     },
                 }));
 
+                if (chat) {
+                    showUnreadDivider(chat, mergedMessages);
+                }
+                const latestMessageId = mergedMessages[mergedMessages.length - 1]?.id;
+                if (latestMessageId) {
+                    clearChatUnread(chatId, latestMessageId);
+                    scheduleMarkChatRead(chatId, latestMessageId);
+                }
+
                 return mergedMessages;
             });
             setNextCursor(messagePage.nextCursor);
@@ -182,38 +508,49 @@ export function useChats() {
         finally {
             setIsLoadingMessages(false);
         }
-    }, [chats, messageCacheByChatId, selectedChat?.id]);
+    }, [chats, clearChatUnread, flushPendingRead, messageCacheByChatId, scheduleMarkChatRead, selectedChat?.id, showUnreadDivider]);
 
     const startDirectChat = useCallback(async (friendId: string) => {
         setIsLoadingChats(true);
         setIsLoadingMessages(true);
         setError(null);
+        flushPendingRead();
 
         try {
             const chat = await openDirectChat(friendId);
-            setSelectedChat(chat);
+            setSelectedChat({ ...chat, unreadCount: 0 });
             activeMessageRequestChatIdRef.current = chat.id;
+            selectedChatIdRef.current = chat.id;
+            clearChatUnread(chat.id);
+            setChats((currentChats) => {
+                const readChat = { ...chat, unreadCount: 0 };
+
+                if (currentChats.some((currentChat) => currentChat.id === chat.id)) {
+                    return currentChats.map((currentChat) =>
+                        currentChat.id === chat.id ? readChat : currentChat
+                    );
+                }
+
+                return [readChat, ...currentChats];
+            });
             const cachedMessages = messageCacheByChatId[chat.id];
 
             if (cachedMessages) {
                 setMessages(cachedMessages.messages);
                 setNextCursor(cachedMessages.nextCursor);
                 setHasMoreMessages(cachedMessages.hasMoreMessages);
+                showUnreadDivider(chat, cachedMessages.messages);
+                const latestMessageId = cachedMessages.messages[cachedMessages.messages.length - 1]?.id;
+                if (latestMessageId) {
+                    clearChatUnread(chat.id, latestMessageId);
+                    scheduleMarkChatRead(chat.id, latestMessageId);
+                }
             }
             else {
                 setMessages([]);
                 setNextCursor(null);
                 setHasMoreMessages(false);
             }
-            setChats((currentChats) => {
-                if (currentChats.some((currentChat) => currentChat.id === chat.id)) {
-                    return currentChats.map((currentChat) =>
-                        currentChat.id === chat.id ? chat : currentChat
-                    );
-                }
-
-                return [chat, ...currentChats];
-            });
             setHasLoadedChats(true);
 
             if (!cachedMessages) {
@@ -235,6 +572,13 @@ export function useChats() {
                         },
                     }));
 
+                    showUnreadDivider(chat, mergedMessages);
+                    const latestMessageId = mergedMessages[mergedMessages.length - 1]?.id;
+                    if (latestMessageId) {
+                        clearChatUnread(chat.id, latestMessageId);
+                        scheduleMarkChatRead(chat.id, latestMessageId);
+                    }
+
                     return mergedMessages;
                 });
                 setNextCursor(messagePage.nextCursor);
@@ -250,7 +594,7 @@ export function useChats() {
             setIsLoadingChats(false);
             setIsLoadingMessages(false);
         }
-    }, [messageCacheByChatId]);
+    }, [clearChatUnread, flushPendingRead, messageCacheByChatId, scheduleMarkChatRead, showUnreadDivider]);
 
     const loadMoreMessages = useCallback(async () => {
         if (!selectedChat || !nextCursor) return false;
@@ -337,10 +681,15 @@ export function useChats() {
                         ...updatedChat,
                         lastMessage: sentMessage,
                         updatedAt: sentMessage.createdAt,
+                        unreadCount: 0,
+                        lastReadMessageId: sentMessage.id,
                     },
                     ...currentChats.filter((chat) => chat.id !== selectedChat.id)
                 ]
             });
+
+            clearChatUnread(selectedChat.id, sentMessage.id);
+            scheduleMarkChatRead(selectedChat.id, sentMessage.id);
 
             return true;
         }
@@ -353,7 +702,7 @@ export function useChats() {
             setIsSendingMessage(false);
         }
 
-    }, [hasMoreMessages, isConnected, nextCursor, selectedChat, sendSocketMessage]);
+    }, [clearChatUnread, hasMoreMessages, isConnected, nextCursor, scheduleMarkChatRead, selectedChat, sendSocketMessage]);
 
     return {
         chats,
@@ -364,6 +713,7 @@ export function useChats() {
         isLoadingChats,
         isLoadingMessages,
         isSendingMessage,
+        newMessagesDividerMessageId,
         isChatSocketConnected: isConnected,
         joinSocketChat,
         loadError: error,

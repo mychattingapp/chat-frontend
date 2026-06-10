@@ -15,6 +15,8 @@ export type Chat = {
     createdAt: string;
     updatedAt: string;
     lastMessage: ChatMessage | null;
+    unreadCount: number;
+    lastReadMessageId: string | null;
 };
 
 export type ChatMessage = {

@@ -51,7 +51,7 @@ export default function HomePage() {
     const friends = useFriendRequests(activeTab === 'friends');
     const activeConfig = tabConfig[activeTab];
     const shouldShowSidebar = activeTab !== 'profile';
-    const chats = useChats();
+    const chats = useChats(activeTab === 'chats');
     const handleMessageFriend = (friendId: string) => {
         setActiveTab('chats');
         void chats.startDirectChat(friendId);
@@ -241,6 +241,7 @@ export default function HomePage() {
                         messages={chats.messages}
                         isLoadingMessages={chats.isLoadingMessages}
                         isSendingMessage={chats.isSendingMessage}
+                        newMessagesDividerMessageId={chats.newMessagesDividerMessageId}
                         loadError={chats.loadError}
                         hasMoreMessages={chats.hasMoreMessages}
                         loadMoreMessages={chats.loadMoreMessages}
