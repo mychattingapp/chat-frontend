@@ -5,7 +5,7 @@ import SendIcon from '@mui/icons-material/Send';
 import { Avatar, Box, Button, CircularProgress, IconButton, Popover, Stack, TextField, Tooltip, Typography } from "@mui/material";
 import type { Chat, ChatMessage } from '../types';
 import useAuth from '../../auth/hooks/useAuth';
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { formatRelativeChatDate, isSameCalendarDate } from '../utils/dateFormatters';
 
 type ChatsMainProps = {
@@ -14,14 +14,19 @@ type ChatsMainProps = {
     isLoadingMessages: boolean;
     isSendingMessage: boolean;
     newMessagesDividerMessageId: string | null;
+    typingUserIds: string[];
+    onlineUserIds: string[];
     loadError: string | null;
     hasMoreMessages: boolean;
     loadMoreMessages: () => Promise<boolean>;
     sendMessage: (content: string) => Promise<boolean>;
+    startTyping: (chatId: string) => void;
+    stopTyping: (chatId: string) => void;
 };
 
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 const SCROLL_TO_BOTTOM_THRESHOLD = 160;
+const TYPING_REFRESH_INTERVAL_MS = 1500;
 const FACE_EMOJIS = [
     '😀',
     '😃',
@@ -217,9 +222,13 @@ export default function ChatsMain({
     isLoadingMessages,
     isSendingMessage,
     newMessagesDividerMessageId,
+    typingUserIds,
+    onlineUserIds,
     loadError,
     loadMoreMessages,
     sendMessage,
+    startTyping,
+    stopTyping,
 }: ChatsMainProps) {
     const { user } = useAuth();
     const currentUserId = user?.id;
@@ -240,7 +249,88 @@ export default function ChatsMain({
     const messageInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
     const shouldFocusAfterSendRef = useRef(false);
     const wasNearBottomRef = useRef(true);
+    const typingStopTimeoutRef = useRef<number | null>(null);
+    const isTypingRef = useRef(false);
+    const activeTypingChatIdRef = useRef<string | null>(null);
+    const lastTypingStartSentAtRef = useRef(0);
     const isEmojiPickerOpen = Boolean(emojiAnchorEl);
+    const typingParticipants = chat
+        ? chat.participants.filter((participant) => typingUserIds.includes(participant.id))
+        : [];
+    const typingIndicatorText = typingParticipants.length === 0
+        ? null
+        : chat?.chatType === 'DIRECT'
+            ? 'typing...'
+            : typingParticipants.length === 1
+                ? `${typingParticipants[0].username} is typing...`
+                : `${typingParticipants.length} people are typing...`;
+    const directChatParticipant = chat?.chatType === 'DIRECT'
+        ? chat.participants.find((participant) => participant.id !== currentUserId)
+        : null;
+    const directPresenceText = directChatParticipant
+        ? onlineUserIds.includes(directChatParticipant.id) ? 'Online' : 'Offline'
+        : null;
+    const headerSubtitle = typingIndicatorText ?? directPresenceText;
+
+    const clearTypingStopTimeout = useCallback(() => {
+        if (typingStopTimeoutRef.current !== null) {
+            window.clearTimeout(typingStopTimeoutRef.current);
+            typingStopTimeoutRef.current = null;
+        }
+    }, []);
+
+    const stopCurrentTyping = useCallback(() => {
+        const typingChatId = activeTypingChatIdRef.current;
+
+        clearTypingStopTimeout();
+
+        if (typingChatId && isTypingRef.current) {
+            stopTyping(typingChatId);
+        }
+
+        isTypingRef.current = false;
+        activeTypingChatIdRef.current = null;
+        lastTypingStartSentAtRef.current = 0;
+    }, [clearTypingStopTimeout, stopTyping]);
+
+    const scheduleTypingStop = useCallback(() => {
+        clearTypingStopTimeout();
+        typingStopTimeoutRef.current = window.setTimeout(() => {
+            stopCurrentTyping();
+        }, 1500);
+    }, [clearTypingStopTimeout, stopCurrentTyping]);
+
+    const handleMessageContentChange = (nextContent: string) => {
+        setMessageContent(nextContent);
+
+        if (!chat || isSendingMessage) {
+            return;
+        }
+
+        if (!nextContent.trim()) {
+            stopCurrentTyping();
+            return;
+        }
+
+        const now = Date.now();
+        const shouldSendTypingStart =
+            !isTypingRef.current ||
+            activeTypingChatIdRef.current !== chat.id ||
+            now - lastTypingStartSentAtRef.current >= TYPING_REFRESH_INTERVAL_MS;
+
+        if (shouldSendTypingStart) {
+            if (activeTypingChatIdRef.current && activeTypingChatIdRef.current !== chat.id) {
+                stopCurrentTyping();
+            }
+
+            startTyping(chat.id);
+            isTypingRef.current = true;
+            activeTypingChatIdRef.current = chat.id;
+            lastTypingStartSentAtRef.current = now;
+        }
+
+        scheduleTypingStop();
+    };
 
     const handleSendMessage = async (contentOverride?: string) => {
         const contentToSend = contentOverride ?? messageContent;
@@ -248,6 +338,7 @@ export default function ChatsMain({
         if (!trimmedContent || isSendingMessage) return;
 
         setEmojiAnchorEl(null);
+        stopCurrentTyping();
         wasNearBottomRef.current = isNearBottom();
         const didSend = await sendMessage(trimmedContent);
 
@@ -274,7 +365,7 @@ export default function ChatsMain({
 
         const nextText = `${replacement.text.slice(0, replacement.cursorPosition)}${appendText}${replacement.text.slice(replacement.cursorPosition)}`;
         const nextCursorPosition = replacement.cursorPosition + appendText.length;
-        setMessageContent(nextText);
+        handleMessageContentChange(nextText);
 
         requestAnimationFrame(() => {
             const currentInput = messageInputRef.current;
@@ -303,9 +394,7 @@ export default function ChatsMain({
         const selectionEnd = input?.selectionEnd ?? messageContent.length;
         const nextCursorPosition = selectionStart + emoji.length;
 
-        setMessageContent(
-            `${messageContent.slice(0, selectionStart)}${emoji}${messageContent.slice(selectionEnd)}`
-        );
+        handleMessageContentChange(`${messageContent.slice(0, selectionStart)}${emoji}${messageContent.slice(selectionEnd)}`);
 
         requestAnimationFrame(() => {
             const currentInput = messageInputRef.current;
@@ -418,6 +507,14 @@ export default function ChatsMain({
         messageInputRef.current?.focus();
     }, [isSendingMessage, messageContent]);
 
+    useEffect(() => {
+        stopCurrentTyping();
+    }, [chat?.id, stopCurrentTyping]);
+
+    useEffect(() => () => {
+        stopCurrentTyping();
+    }, [stopCurrentTyping]);
+
     if (!chat) {
         return (
             <Box
@@ -476,9 +573,18 @@ export default function ChatsMain({
                         <Typography sx={{ color: 'text.primary', fontWeight: 800 }} noWrap>
                             {chat.title}
                         </Typography>
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }} noWrap>
-                            Direct messages
-                        </Typography>
+                        {headerSubtitle && (
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    color: typingIndicatorText ? 'primary.main' : 'text.secondary',
+                                    fontStyle: typingIndicatorText ? 'italic' : 'normal',
+                                }}
+                                noWrap
+                            >
+                                {headerSubtitle}
+                            </Typography>
+                        )}
                     </Box>
                 </Stack>
                 <Tooltip title="Conversation actions">
@@ -776,7 +882,7 @@ export default function ChatsMain({
                     value={messageContent}
                     disabled={isSendingMessage}
                     inputRef={messageInputRef}
-                    onChange={(e) => setMessageContent(e.target.value)}
+                    onChange={(e) => handleMessageContentChange(e.target.value)}
                     onKeyDown={(e) => {
                         if (e.key === " ") {
                             if (replaceCurrentShortcut(' ')) {

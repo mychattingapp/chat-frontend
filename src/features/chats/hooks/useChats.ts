@@ -2,7 +2,7 @@ import type { Chat, ChatMessage, MessageCursor } from '../types';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getChatMessages, getChats, openDirectChat, sendChatMessage } from "../api/chatsApi";
 import { useChatSocket } from './useChatSocket';
-import type { NewSocketMessageEvent, SendSocketMessagePayload } from '../socket/chatSocketTypes';
+import type { NewSocketMessageEvent, PresenceSocketSnapshotEvent, PresenceSocketUpdateEvent, SendSocketMessagePayload, TypingSocketUpdateEvent } from '../socket/chatSocketTypes';
 import useAuth from '../../auth/hooks/useAuth';
 import { playMessageNotificationSound } from '../utils/notificationSound';
 
@@ -68,6 +68,8 @@ const getUnreadDividerMessageId = (chat: Chat, messages: ChatMessage[], currentU
     return null;
 };
 
+const getTypingKey = (chatId: string, userId: string) => `${chatId}:${userId}`;
+
 export function useChats(isChatViewActive: boolean) {
     const { user } = useAuth();
     const [chats, setChats] = useState<Chat[]>([]);
@@ -81,6 +83,8 @@ export function useChats(isChatViewActive: boolean) {
     const [hasLoadedChats, setHasLoadedChats] = useState(false);
     const [messageCacheByChatId, setMessageCacheByChatId] = useState<Record<string, MessageCacheEntry>>({});
     const [newMessagesDividerMessageId, setNewMessagesDividerMessageId] = useState<string | null>(null);
+    const [typingUserIdsByChatId, setTypingUserIdsByChatId] = useState<Record<string, string[]>>({});
+    const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
     const activeMessageRequestChatIdRef = useRef<string | null>(null);
     const selectedChatIdRef = useRef<string | null>(null);
@@ -92,7 +96,38 @@ export function useChats(isChatViewActive: boolean) {
     const isFlushingPendingReadRef = useRef(false);
     const readDebounceTimeoutRef = useRef<number | null>(null);
     const dividerTimeoutRef = useRef<number | null>(null);
+    const typingTimeoutsRef = useRef<Record<string, number>>({});
     const hiddenUnreadDividerByChatIdRef = useRef<Record<string, string>>({});
+
+    const removeTypingUser = useCallback((chatId: string, typingUserId: string) => {
+        const typingKey = getTypingKey(chatId, typingUserId);
+
+        if (typingTimeoutsRef.current[typingKey] !== undefined) {
+            window.clearTimeout(typingTimeoutsRef.current[typingKey]);
+            delete typingTimeoutsRef.current[typingKey];
+        }
+
+        setTypingUserIdsByChatId((currentTypingUserIdsByChatId) => {
+            const currentTypingUserIds = currentTypingUserIdsByChatId[chatId];
+
+            if (!currentTypingUserIds?.includes(typingUserId)) {
+                return currentTypingUserIdsByChatId;
+            }
+
+            const nextTypingUserIds = currentTypingUserIds.filter((currentUserId) => currentUserId !== typingUserId);
+
+            if (nextTypingUserIds.length === 0) {
+                const remainingTypingUserIdsByChatId = { ...currentTypingUserIdsByChatId };
+                delete remainingTypingUserIdsByChatId[chatId];
+                return remainingTypingUserIdsByChatId;
+            }
+
+            return {
+                ...currentTypingUserIdsByChatId,
+                [chatId]: nextTypingUserIds,
+            };
+        });
+    }, []);
 
     const clearReadDebounceTimeout = useCallback(() => {
         if (readDebounceTimeoutRef.current !== null) {
@@ -266,13 +301,83 @@ export function useChats(isChatViewActive: boolean) {
         setError(message);
     }, []);
 
-    const handleJoinedSocketChat = useCallback((chat: Chat) => {
-        setChats((currentChats) => upsertChatToTop(currentChats, chat));
-    }, []);
+    const mergeOnlineUserIds = useCallback((nextOnlineUserIds: string[]) => {
+        const filteredOnlineUserIds = nextOnlineUserIds.filter((onlineUserId) => onlineUserId !== user?.id);
 
-    const { isConnected, joinSocketChat, sendSocketMessage, markSocketChatRead } = useChatSocket({
+        if (filteredOnlineUserIds.length === 0) {
+            return;
+        }
+
+        setOnlineUserIds((currentOnlineUserIds) => [
+            ...new Set([...currentOnlineUserIds, ...filteredOnlineUserIds]),
+        ]);
+    }, [user?.id]);
+
+    const handleJoinedSocketChat = useCallback((chat: Chat, joinedOnlineUserIds: string[]) => {
+        setChats((currentChats) => upsertChatToTop(currentChats, chat));
+        mergeOnlineUserIds(joinedOnlineUserIds);
+    }, [mergeOnlineUserIds]);
+
+    const handleTypingUpdate = useCallback((event: TypingSocketUpdateEvent) => {
+        if (event.userId === user?.id) {
+            return;
+        }
+
+        if (!event.isTyping) {
+            removeTypingUser(event.chatId, event.userId);
+            return;
+        }
+
+        const typingKey = getTypingKey(event.chatId, event.userId);
+
+        if (typingTimeoutsRef.current[typingKey] !== undefined) {
+            window.clearTimeout(typingTimeoutsRef.current[typingKey]);
+        }
+
+        typingTimeoutsRef.current[typingKey] = window.setTimeout(() => {
+            removeTypingUser(event.chatId, event.userId);
+        }, 3000);
+
+        setTypingUserIdsByChatId((currentTypingUserIdsByChatId) => {
+            const currentTypingUserIds = currentTypingUserIdsByChatId[event.chatId] ?? [];
+
+            if (currentTypingUserIds.includes(event.userId)) {
+                return currentTypingUserIdsByChatId;
+            }
+
+            return {
+                ...currentTypingUserIdsByChatId,
+                [event.chatId]: [...currentTypingUserIds, event.userId],
+            };
+        });
+    }, [removeTypingUser, user?.id]);
+
+    const handlePresenceSnapshot = useCallback((event: PresenceSocketSnapshotEvent) => {
+        setOnlineUserIds(event.onlineUserIds.filter((onlineUserId) => onlineUserId !== user?.id));
+    }, [user?.id]);
+
+    const handlePresenceUpdate = useCallback((event: PresenceSocketUpdateEvent) => {
+        if (event.userId === user?.id) {
+            return;
+        }
+
+        setOnlineUserIds((currentOnlineUserIds) => {
+            if (event.isOnline) {
+                return currentOnlineUserIds.includes(event.userId)
+                    ? currentOnlineUserIds
+                    : [...currentOnlineUserIds, event.userId];
+            }
+
+            return currentOnlineUserIds.filter((onlineUserId) => onlineUserId !== event.userId);
+        });
+    }, [user?.id]);
+
+    const { isConnected, joinSocketChat, sendSocketMessage, markSocketChatRead, startTyping, stopTyping } = useChatSocket({
         onJoinedChat: handleJoinedSocketChat,
         onNewMessage: handleNewSocketMessage,
+        onTypingUpdate: handleTypingUpdate,
+        onPresenceSnapshot: handlePresenceSnapshot,
+        onPresenceUpdate: handlePresenceUpdate,
         onError: handleSocketError
     });
 
@@ -332,6 +437,11 @@ export function useChats(isChatViewActive: boolean) {
             window.clearTimeout(dividerTimeoutRef.current);
             dividerTimeoutRef.current = null;
         }
+
+        Object.values(typingTimeoutsRef.current).forEach((typingTimeoutId) => {
+            window.clearTimeout(typingTimeoutId);
+        });
+        typingTimeoutsRef.current = {};
     }, [flushPendingRead]);
 
     useEffect(() => {
@@ -714,8 +824,12 @@ export function useChats(isChatViewActive: boolean) {
         isLoadingMessages,
         isSendingMessage,
         newMessagesDividerMessageId,
+        typingUserIds: selectedChat ? typingUserIdsByChatId[selectedChat.id] ?? [] : [],
+        onlineUserIds,
         isChatSocketConnected: isConnected,
         joinSocketChat,
+        startTyping,
+        stopTyping,
         loadError: error,
         loadChats,
         selectChat,

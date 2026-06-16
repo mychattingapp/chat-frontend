@@ -242,10 +242,14 @@ export default function HomePage() {
                         isLoadingMessages={chats.isLoadingMessages}
                         isSendingMessage={chats.isSendingMessage}
                         newMessagesDividerMessageId={chats.newMessagesDividerMessageId}
+                        typingUserIds={chats.typingUserIds}
+                        onlineUserIds={chats.onlineUserIds}
                         loadError={chats.loadError}
                         hasMoreMessages={chats.hasMoreMessages}
                         loadMoreMessages={chats.loadMoreMessages}
                         sendMessage={chats.sendMessage}
+                        startTyping={chats.startTyping}
+                        stopTyping={chats.stopTyping}
                     />}
                 {activeTab === 'friends' &&
                     <FriendsMain
