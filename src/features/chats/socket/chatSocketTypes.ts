@@ -23,6 +23,25 @@ export type MarkSocketChatReadPayload = {
     lastReadMessageId: string;
 };
 
+export type TypingSocketPayload = {
+    chatId: string;
+};
+
+export type TypingSocketUpdateEvent = {
+    chatId: string;
+    userId: string;
+    isTyping: boolean;
+};
+
+export type PresenceSocketSnapshotEvent = {
+    onlineUserIds: string[];
+};
+
+export type PresenceSocketUpdateEvent = {
+    userId: string;
+    isOnline: boolean;
+};
+
 export type SendSocketMessageAck = {
     success: boolean;
     data?: {
@@ -38,6 +57,7 @@ export type JoinSocketChatAck = {
     success: boolean;
     data?: {
         chat: Chat;
+        onlineUserIds?: string[];
     };
     error?: {
         code: string;
@@ -56,6 +76,9 @@ export type MarkSocketChatReadAck = {
 export type ServerToClientEvents = {
     "message:new": (event: NewSocketMessageEvent) => void;
     "chat:new": (event: NewSocketChatEvent) => void;
+    "typing:update": (event: TypingSocketUpdateEvent) => void;
+    "presence:snapshot": (event: PresenceSocketSnapshotEvent) => void;
+    "presence:update": (event: PresenceSocketUpdateEvent) => void;
 };
 
 export type ClientToServerEvents = {
@@ -71,4 +94,6 @@ export type ClientToServerEvents = {
         payload: MarkSocketChatReadPayload,
         ack: (response: MarkSocketChatReadAck) => void
     ) => void;
+    "typing:start": (payload: TypingSocketPayload) => void;
+    "typing:stop": (payload: TypingSocketPayload) => void;
 };
