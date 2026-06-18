@@ -7,6 +7,7 @@ import type { Chat, ChatMessage } from '../types';
 import useAuth from '../../auth/hooks/useAuth';
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { formatRelativeChatDate, isSameCalendarDate } from '../utils/dateFormatters';
+import { getProfileImageSrc } from '../../../shared/utils/profileImage';
 
 type ChatsMainProps = {
     chat: Chat | null;
@@ -267,6 +268,7 @@ export default function ChatsMain({
     const directChatParticipant = chat?.chatType === 'DIRECT'
         ? chat.participants.find((participant) => participant.id !== currentUserId)
         : null;
+    const headerImageUrl = directChatParticipant?.profileImageUrl ?? null;
     const directPresenceText = directChatParticipant
         ? onlineUserIds.includes(directChatParticipant.id) ? 'Online' : 'Offline'
         : null;
@@ -568,7 +570,9 @@ export default function ChatsMain({
                 }}
             >
                 <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
-                    <Avatar sx={{ width: 42, height: 42 }}>{initials}</Avatar>
+                    <Avatar src={getProfileImageSrc(headerImageUrl, directChatParticipant?.updatedAt)} sx={{ width: 42, height: 42 }}>
+                        {!headerImageUrl ? initials : null}
+                    </Avatar>
                     <Box sx={{ minWidth: 0 }}>
                         <Typography sx={{ color: 'text.primary', fontWeight: 800 }} noWrap>
                             {chat.title}

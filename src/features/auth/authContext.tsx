@@ -1,9 +1,8 @@
-import { createContext, useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { User } from "../../types/user";
 import { apiRequest } from "../../lib/apiClient";
-import type { AuthState } from "../../types/auth";
+import { AuthContext } from "./authContextValue";
 
-const AuthContext = createContext<AuthState | null>(null);
 type AuthMeResponse = {
     success: boolean;
     data: {
@@ -15,9 +14,13 @@ function AuthProvider({ children }: { children: ReactNode }) {
 
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
+    const hasCheckedAuthRef = useRef(false);
 
     const refreshUser = useCallback(async () => {
-        setLoading(true);
+        if (!hasCheckedAuthRef.current) {
+            setLoading(true);
+        }
+
         try {
             const response = await apiRequest<AuthMeResponse>('api/auth/me', { method: 'GET' });
             setUser(response.data.user ?? null);
@@ -26,6 +29,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
             setUser(null);
         }
         finally {
+            hasCheckedAuthRef.current = true;
             setLoading(false);
         }
     }, []);
@@ -51,4 +55,4 @@ function AuthProvider({ children }: { children: ReactNode }) {
     );
 }
 
-export { AuthContext, AuthProvider };
+export { AuthProvider };

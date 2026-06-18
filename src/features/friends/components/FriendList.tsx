@@ -1,6 +1,7 @@
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import { Avatar, Box, Button, CircularProgress, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import type { FriendListItem, FriendView } from "../types";
+import { getProfileImageSrc } from "../../../shared/utils/profileImage";
 
 type FriendListProps = {
     type: FriendView;
@@ -75,18 +76,16 @@ export default function FriendList({
                 >
                     <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
                         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
-                            {type === 'all' && (
-                                <Avatar
-                                    src={item.profileImageUrl ?? undefined}
-                                    sx={{
-                                        width: 42,
-                                        height: 42,
-                                        flexShrink: 0,
-                                    }}
-                                >
-                                    {!item.profileImageUrl ? getInitials(item.username) : null}
-                                </Avatar>
-                            )}
+                            <Avatar
+                                src={getProfileImageSrc(item.profileImageUrl, item.updatedAt)}
+                                sx={{
+                                    width: 42,
+                                    height: 42,
+                                    flexShrink: 0,
+                                }}
+                            >
+                                {!item.profileImageUrl ? getInitials(item.username) : null}
+                            </Avatar>
                             <Box sx={{ minWidth: 0 }}>
                                 <Typography sx={{ color: 'text.primary', fontWeight: 800 }} noWrap>
                                     {item.username}

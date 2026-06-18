@@ -1,4 +1,4 @@
-import { Box, IconButton, Stack, Tooltip, Typography } from "@mui/material";
+import { Avatar, Box, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline';
@@ -10,6 +10,8 @@ import { ChatsMain, ChatsSidebar, StartChatDialog } from "../../features/chats";
 import { AddFriendDialog, FriendsMain, FriendsSidebar, useFriendRequests, type FriendView } from "../../features/friends";
 import { ProfileMain } from "../../features/home/components";
 import { useChats } from "../../features/chats/hooks/useChats";
+import useAuth from "../../features/auth/hooks/useAuth";
+import { getProfileImageSrc } from "../../shared/utils/profileImage";
 
 type HomeTab = 'chats' | 'friends' | 'profile';
 
@@ -41,7 +43,16 @@ const tabConfig: Record<HomeTab, HomeTabConfig> = {
     },
 };
 
+const getInitials = (name: string) => name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
 export default function HomePage() {
+    const { user } = useAuth();
     const { handleLogout, isLoading: isLoggingOut } = useOAuthLogin();
     const [activeTab, setActiveTab] = useState<HomeTab>('chats');
     const [activeFriendView, setActiveFriendView] = useState<FriendView>('all');
@@ -52,6 +63,7 @@ export default function HomePage() {
     const activeConfig = tabConfig[activeTab];
     const shouldShowSidebar = activeTab !== 'profile';
     const chats = useChats(activeTab === 'chats');
+    const profileImageSrc = getProfileImageSrc(user?.profileImageUrl, user?.updatedAt);
     const handleMessageFriend = (friendId: string) => {
         setActiveTab('chats');
         void chats.startDirectChat(friendId);
@@ -161,7 +173,19 @@ export default function HomePage() {
                                 },
                             }}
                         >
-                            <PersonOutlineIcon />
+                            <Avatar
+                                src={profileImageSrc}
+                                sx={{
+                                    width: 32,
+                                    height: 32,
+                                    fontSize: 12,
+                                    fontWeight: 800,
+                                    backgroundColor: activeTab === 'profile' ? 'primary.contrastText' : 'action.selected',
+                                    color: activeTab === 'profile' ? 'primary.main' : 'text.primary',
+                                }}
+                            >
+                                {!profileImageSrc ? getInitials(user?.name ?? "User") : null}
+                            </Avatar>
                         </IconButton>
                     </Tooltip>
                     <Tooltip title="Logout" placement="right">
