@@ -6,6 +6,8 @@ export type FriendRequestUser = {
     id: string;
     username: string;
     email: string;
+    profileImageUrl: string | null;
+    updatedAt: string;
 };
 
 export type SentFriendRequest = {
@@ -29,6 +31,7 @@ export type FriendListItem = {
     email: string;
     createdAt: string;
     profileImageUrl?: string | null;
+    updatedAt?: string;
 };
 
 export type FriendRequestCounts = Record<FriendView, number>;
@@ -38,4 +41,6 @@ export type Friend = {
     id: string;
     username: string;
     email: string;
+    profileImageUrl: string | null;
+    updatedAt: string;
 };

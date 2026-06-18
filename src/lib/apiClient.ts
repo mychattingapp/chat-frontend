@@ -67,5 +67,6 @@ const refreshToken = async () => {
 };
 
 export {
-    apiRequest
+    apiRequest,
+    BASE_URL
 };

@@ -2,6 +2,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import { Avatar, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, InputAdornment, ListItemButton, Stack, TextField, Typography } from "@mui/material";
 import { useMemo, useState } from "react";
 import type { Friend } from "../../friends/types";
+import { getProfileImageSrc } from "../../../shared/utils/profileImage";
 
 type StartChatDialogProps = {
     open: boolean;
@@ -111,8 +112,8 @@ export default function StartChatDialog({
                                 onClick={() => setSelectedFriendId(friend.id)}
                                 sx={{ gap: 1.5 }}
                             >
-                                <Avatar sx={{ width: 38, height: 38, flexShrink: 0 }}>
-                                    {getInitials(friend.username)}
+                                <Avatar src={getProfileImageSrc(friend.profileImageUrl, friend.updatedAt)} sx={{ width: 38, height: 38, flexShrink: 0 }}>
+                                    {!friend.profileImageUrl ? getInitials(friend.username) : null}
                                 </Avatar>
                                 <Box sx={{ minWidth: 0 }}>
                                     <Typography sx={{ fontWeight: 800 }} noWrap>

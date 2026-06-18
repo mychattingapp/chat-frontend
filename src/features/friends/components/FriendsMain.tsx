@@ -44,6 +44,8 @@ const mapReceivedRequest = (request: ReceivedFriendRequest): FriendListItem => (
     username: request.requester.username,
     email: request.requester.email,
     createdAt: request.createdAt,
+    profileImageUrl: request.requester.profileImageUrl,
+    updatedAt: request.requester.updatedAt,
 });
 
 const mapSentRequest = (request: SentFriendRequest): FriendListItem => ({
@@ -51,6 +53,8 @@ const mapSentRequest = (request: SentFriendRequest): FriendListItem => ({
     username: request.recipient.username,
     email: request.recipient.email,
     createdAt: request.createdAt,
+    profileImageUrl: request.recipient.profileImageUrl,
+    updatedAt: request.recipient.updatedAt,
 });
 
 const mapFriend = (friend: Friend): FriendListItem => ({
@@ -59,7 +63,8 @@ const mapFriend = (friend: Friend): FriendListItem => ({
     username: friend.username,
     email: friend.email,
     createdAt: '',
-    profileImageUrl: null,
+    profileImageUrl: friend.profileImageUrl,
+    updatedAt: friend.updatedAt,
 });
 
 export default function FriendsMain({

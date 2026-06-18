@@ -4,6 +4,8 @@ export type ChatParticipant = {
     id: string;
     username: string;
     email: string;
+    profileImageUrl: string | null;
+    updatedAt: string;
 };
 
 export type Chat = {
