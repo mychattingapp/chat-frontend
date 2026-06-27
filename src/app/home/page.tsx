@@ -272,6 +272,7 @@ export default function HomePage() {
                         hasMoreMessages={chats.hasMoreMessages}
                         loadMoreMessages={chats.loadMoreMessages}
                         sendMessage={chats.sendMessage}
+                        sendImageMessage={chats.sendImageMessage}
                         startTyping={chats.startTyping}
                         stopTyping={chats.stopTyping}
                     />}

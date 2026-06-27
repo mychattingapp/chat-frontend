@@ -1,4 +1,5 @@
 import AddCommentOutlinedIcon from '@mui/icons-material/AddCommentOutlined';
+import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import { Avatar, Badge, Box, Button, CircularProgress, InputAdornment, ListItemButton, Stack, TextField, Typography } from "@mui/material";
 import type { Chat } from "../types";
@@ -34,6 +35,15 @@ export default function ChatsSidebar({
     const getDirectChatParticipant = (chat: Chat) => chat.chatType === 'DIRECT'
         ? chat.participants[0] ?? null
         : null;
+    const getLastMessagePreview = (chat: Chat) => {
+        if (!chat.lastMessage) {
+            return { text: 'No messages yet', isImageFallback: false };
+        }
+
+        return chat.lastMessage.text
+            ? { text: chat.lastMessage.text, isImageFallback: false }
+            : { text: chat.lastMessage.hasImage ? 'Image' : 'No messages yet', isImageFallback: chat.lastMessage.hasImage };
+    };
 
     return (
         <Stack spacing={2}>
@@ -110,6 +120,7 @@ export default function ChatsSidebar({
                 {!isLoading && !loadError && chats.map((chat) => {
                     const directParticipant = getDirectChatParticipant(chat);
                     const chatImageUrl = directParticipant?.profileImageUrl ?? null;
+                    const lastMessagePreview = getLastMessagePreview(chat);
 
                     return (
                         <ListItemButton
@@ -138,8 +149,24 @@ export default function ChatsSidebar({
                                     </Typography>
                                 </Stack>
                                 <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0 }}>
-                                    <Typography variant="body2" sx={{ color: chat.unreadCount > 0 ? 'text.primary' : 'text.secondary', fontWeight: chat.unreadCount > 0 ? 700 : 400, minWidth: 0, flex: 1 }} noWrap>
-                                        {chat.lastMessage?.text ?? 'No messages yet'}
+                                    <Typography
+                                        variant="body2"
+                                        sx={{
+                                            color: chat.unreadCount > 0 ? 'text.primary' : 'text.secondary',
+                                            fontWeight: chat.unreadCount > 0 ? 700 : 400,
+                                            minWidth: 0,
+                                            flex: 1,
+                                        }}
+                                        noWrap
+                                    >
+                                        {lastMessagePreview.isImageFallback ? (
+                                            <Stack component="span" direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
+                                                <ImageOutlinedIcon sx={{ fontSize: 16, flexShrink: 0 }} />
+                                                <Box component="span" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {lastMessagePreview.text}
+                                                </Box>
+                                            </Stack>
+                                        ) : lastMessagePreview.text}
                                     </Typography>
                                     {chat.unreadCount > 0 && (
                                         <Badge

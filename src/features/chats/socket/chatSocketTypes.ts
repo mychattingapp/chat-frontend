@@ -2,7 +2,8 @@ import type { Chat, ChatMessage } from "../types";
 
 export type SendSocketMessagePayload = {
     chatId: string;
-    text: string;
+    text?: string;
+    imageKey?: string;
 };
 
 export type NewSocketMessageEvent = {

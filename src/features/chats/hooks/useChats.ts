@@ -1,10 +1,11 @@
 import type { Chat, ChatMessage, MessageCursor } from '../types';
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getChatMessages, getChats, openDirectChat, sendChatMessage } from "../api/chatsApi";
+import { getChatMessages, getChats, getMessageImageUploadUrl, openDirectChat, sendChatMessage } from "../api/chatsApi";
 import { useChatSocket } from './useChatSocket';
 import type { NewSocketMessageEvent, PresenceSocketSnapshotEvent, PresenceSocketUpdateEvent, SendSocketMessagePayload, TypingSocketUpdateEvent } from '../socket/chatSocketTypes';
 import useAuth from '../../auth/hooks/useAuth';
 import { playMessageNotificationSound } from '../utils/notificationSound';
+import { uploadToSignedUrl } from '../../../shared/utils/uploadToSignedUrl';
 
 type MessageCacheEntry = {
     messages: ChatMessage[];
@@ -748,25 +749,30 @@ export function useChats(isChatViewActive: boolean) {
 
     }, [selectedChat, nextCursor]);
 
-    const sendMessage = useCallback(async (text: string) => {
+    const sendMessagePayload = useCallback(async (payload: { text?: string; imageKey?: string }) => {
         if (!selectedChat || isSendingMessageRef.current) return false;
 
-        const trimmedText = text.trim();
-        if (!trimmedText) return false;
+        const trimmedText = payload.text?.trim();
+        const imageKey = payload.imageKey?.trim();
+        if (!trimmedText && !imageKey) return false;
 
         isSendingMessageRef.current = true;
         setIsSendingMessage(true);
         setError(null);
 
         try {
-            const payload: SendSocketMessagePayload = {
+            const socketPayload: SendSocketMessagePayload = {
                 chatId: selectedChat.id,
-                text: trimmedText
+                ...(trimmedText && { text: trimmedText }),
+                ...(imageKey && { imageKey })
             };
 
             const sentMessage = isConnected
-                ? await sendSocketMessage(payload)
-                : await sendChatMessage(selectedChat.id, trimmedText);
+                ? await sendSocketMessage(socketPayload)
+                : await sendChatMessage(selectedChat.id, {
+                    ...(trimmedText && { text: trimmedText }),
+                    ...(imageKey && { imageKey })
+                });
             setMessages((currentMessages) => {
                 const updatedMessages = appendMessageIfMissing(currentMessages, sentMessage);
 
@@ -814,6 +820,29 @@ export function useChats(isChatViewActive: boolean) {
 
     }, [clearChatUnread, hasMoreMessages, isConnected, nextCursor, scheduleMarkChatRead, selectedChat, sendSocketMessage]);
 
+    const sendMessage = useCallback(async (text: string) => {
+        return sendMessagePayload({ text });
+    }, [sendMessagePayload]);
+
+    const sendImageMessage = useCallback(async (file: File, caption: string) => {
+        if (!selectedChat || isSendingMessageRef.current) return false;
+
+        setError(null);
+
+        try {
+            const { uploadUrl, contentType, key } = await getMessageImageUploadUrl(file);
+            await uploadToSignedUrl(uploadUrl, file, contentType);
+            return await sendMessagePayload({
+                text: caption,
+                imageKey: key,
+            });
+        }
+        catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to send image.");
+            return false;
+        }
+    }, [selectedChat, sendMessagePayload]);
+
     return {
         chats,
         selectedChat,
@@ -836,5 +865,6 @@ export function useChats(isChatViewActive: boolean) {
         startDirectChat,
         loadMoreMessages,
         sendMessage,
+        sendImageMessage,
     };
 }
