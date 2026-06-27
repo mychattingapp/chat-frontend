@@ -1,13 +1,20 @@
+import AddPhotoAlternateOutlinedIcon from '@mui/icons-material/AddPhotoAlternateOutlined';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CloseIcon from '@mui/icons-material/Close';
 import InsertEmoticonOutlinedIcon from '@mui/icons-material/InsertEmoticonOutlined';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SendIcon from '@mui/icons-material/Send';
-import { Avatar, Box, Button, CircularProgress, IconButton, Popover, Stack, TextField, Tooltip, Typography } from "@mui/material";
+import { Avatar, Box, Button, CircularProgress, Dialog, IconButton, Popover, Stack, TextField, Tooltip, Typography } from "@mui/material";
 import type { Chat, ChatMessage } from '../types';
 import useAuth from '../../auth/hooks/useAuth';
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
 import { formatRelativeChatDate, isSameCalendarDate } from '../utils/dateFormatters';
 import { getProfileImageSrc } from '../../../shared/utils/profileImage';
+import { validateMessageImageFile, validateMessageImageType } from '../utils/messageImageValidation';
+import { getMessageImageUrl } from '../api/chatsApi';
+import { useSnackbar } from '../../../shared/snackbar';
+import { compressMessageImageFile } from '../utils/messageImageCompression';
 
 type ChatsMainProps = {
     chat: Chat | null;
@@ -21,8 +28,17 @@ type ChatsMainProps = {
     hasMoreMessages: boolean;
     loadMoreMessages: () => Promise<boolean>;
     sendMessage: (content: string) => Promise<boolean>;
+    sendImageMessage: (file: File, caption: string) => Promise<boolean>;
     startTyping: (chatId: string) => void;
     stopTyping: (chatId: string) => void;
+};
+
+type ImageViewerState = {
+    imageUrl: string;
+    message: ChatMessage;
+    hasRetried: boolean;
+    isRefreshing: boolean;
+    hasFailed: boolean;
 };
 
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
@@ -216,6 +232,125 @@ const isWithinGroupWindow = (message: ChatMessage, adjacentMessage: ChatMessage 
     return Math.abs(new Date(message.createdAt).getTime() - new Date(adjacentMessage.createdAt).getTime()) <= GROUP_WINDOW_MS;
 };
 
+function MessageImage({
+    chatId,
+    message,
+    onLoad,
+    onOpen,
+}: {
+    chatId: string;
+    message: ChatMessage;
+    onLoad?: () => void;
+    onOpen: (imageUrl: string, message: ChatMessage) => void;
+}) {
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const didNotifyLoadRef = useRef(false);
+    const maxImageWidth = 320;
+    const maxImageHeight = 360;
+    const fallbackImageAspectRatio = `${maxImageWidth} / ${maxImageHeight}`;
+
+    useLayoutEffect(() => {
+        if (imageSize && !didNotifyLoadRef.current) {
+            didNotifyLoadRef.current = true;
+            onLoad?.();
+        }
+    }, [imageSize, onLoad]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        void getMessageImageUrl(chatId, message.id)
+            .then((nextImageUrl) => {
+                if (isMounted) {
+                    setImageUrl(nextImageUrl);
+                }
+            })
+            .catch(() => {
+                if (isMounted) {
+                    setError("Could not load image.");
+                }
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [chatId, message.id]);
+
+    if (error) {
+        return (
+            <Typography variant="body2" sx={{ color: 'error.main' }}>
+                {error}
+            </Typography>
+        );
+    }
+
+    if (!imageUrl) {
+        return (
+            <Box
+                sx={{
+                    width: `${maxImageWidth}px`,
+                    maxWidth: '100%',
+                    aspectRatio: fallbackImageAspectRatio,
+                    display: 'grid',
+                    placeItems: 'center',
+                }}
+            >
+                <CircularProgress size={24} />
+            </Box>
+        );
+    }
+
+    const imageAspectRatio = imageSize
+        ? `${imageSize.width} / ${imageSize.height}`
+        : fallbackImageAspectRatio;
+    const displayWidth = imageSize
+        ? Math.min(maxImageWidth, imageSize.width, Math.round(maxImageHeight * (imageSize.width / imageSize.height)))
+        : maxImageWidth;
+
+    return (
+        <Box
+            sx={{
+                width: `${displayWidth}px`,
+                maxWidth: '100%',
+                aspectRatio: imageAspectRatio,
+                maxHeight: 360,
+                overflow: 'hidden',
+                borderRadius: 1,
+                backgroundColor: 'background.default',
+            }}
+        >
+            <Box
+                component="img"
+                src={imageUrl}
+                alt=""
+                role="button"
+                onLoad={(event) => {
+                    const image = event.currentTarget;
+                    setImageSize({
+                        width: image.naturalWidth,
+                        height: image.naturalHeight,
+                    });
+                }}
+                onError={() => {
+                    setImageUrl(null);
+                    setImageSize(null);
+                    setError("Could not load image.");
+                }}
+                onClick={() => onOpen(imageUrl, message)}
+                sx={{
+                    display: 'block',
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain',
+                    cursor: 'pointer',
+                }}
+            />
+        </Box>
+    );
+}
+
 export default function ChatsMain({
     chat,
     hasMoreMessages,
@@ -228,10 +363,12 @@ export default function ChatsMain({
     loadError,
     loadMoreMessages,
     sendMessage,
+    sendImageMessage,
     startTyping,
     stopTyping,
 }: ChatsMainProps) {
     const { user } = useAuth();
+    const { showSnackbar } = useSnackbar();
     const currentUserId = user?.id;
     const initials = chat?.title
         .trim()
@@ -241,6 +378,13 @@ export default function ChatsMain({
         .join("")
         .toUpperCase() || "CH";
     const [messageContent, setMessageContent] = useState("");
+    const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+    const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null);
+    const [imageCaption, setImageCaption] = useState("");
+    const [imageError, setImageError] = useState<string | null>(null);
+    const [isPreparingImage, setIsPreparingImage] = useState(false);
+    const [isSendingImage, setIsSendingImage] = useState(false);
+    const [imageViewer, setImageViewer] = useState<ImageViewerState | null>(null);
     const [showScrollToBottom, setShowScrollToBottom] = useState(false);
     const [emojiAnchorEl, setEmojiAnchorEl] = useState<HTMLButtonElement | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -248,6 +392,7 @@ export default function ChatsMain({
     const previousLastMessageIdRef = useRef<string | null>(null);
     const preserveScrollHeightRef = useRef<number | null>(null);
     const messageInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+    const imageInputRef = useRef<HTMLInputElement | null>(null);
     const shouldFocusAfterSendRef = useRef(false);
     const wasNearBottomRef = useRef(true);
     const typingStopTimeoutRef = useRef<number | null>(null);
@@ -350,6 +495,138 @@ export default function ChatsMain({
         }
     }
 
+    const clearSelectedImage = useCallback(() => {
+        setSelectedImageFile(null);
+        setImageCaption("");
+        setImageError(null);
+
+        if (imageInputRef.current) {
+            imageInputRef.current.value = "";
+        }
+    }, []);
+
+    const handleImageFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0] ?? null;
+        const input = event.currentTarget;
+
+        if (!file) {
+            return;
+        }
+
+        const typeError = validateMessageImageType(file);
+
+        if (typeError) {
+            showSnackbar({ message: typeError, severity: "error" });
+            setSelectedImageFile(null);
+            input.value = "";
+            return;
+        }
+
+        setEmojiAnchorEl(null);
+        stopCurrentTyping();
+        setImageError(null);
+        setIsPreparingImage(true);
+
+        try {
+            const compressedFile = await compressMessageImageFile(file);
+            const validationError = validateMessageImageFile(compressedFile);
+
+            if (validationError) {
+                showSnackbar({ message: validationError, severity: "error" });
+                setSelectedImageFile(null);
+                input.value = "";
+                return;
+            }
+
+            setImageCaption("");
+            setSelectedImageFile(compressedFile);
+        }
+        catch (error) {
+            showSnackbar({
+                message: error instanceof Error ? error.message : "Could not prepare image.",
+                severity: "error",
+            });
+            setSelectedImageFile(null);
+            input.value = "";
+        }
+        finally {
+            setIsPreparingImage(false);
+        }
+    };
+
+    const handleSendSelectedImage = async () => {
+        if (!selectedImageFile || isSendingImage || isSendingMessage) {
+            return;
+        }
+
+        setIsSendingImage(true);
+        setImageError(null);
+        stopCurrentTyping();
+        wasNearBottomRef.current = true;
+
+        try {
+            const didSend = await sendImageMessage(selectedImageFile, replaceTrailingEmojiShortcut(imageCaption));
+
+            if (didSend) {
+                clearSelectedImage();
+                return;
+            }
+
+            setImageError("Failed to send image.");
+        }
+        catch (error) {
+            setImageError(error instanceof Error ? error.message : "Failed to send image.");
+        }
+        finally {
+            setIsSendingImage(false);
+        }
+    };
+
+    const handleViewerImageError = () => {
+        if (!chat || !imageViewer || imageViewer.isRefreshing) {
+            return;
+        }
+
+        if (imageViewer.hasRetried) {
+            if (!imageViewer.hasFailed) {
+                showSnackbar({ message: "Could not load image.", severity: "error" });
+                setImageViewer((currentViewer) => currentViewer?.message.id === imageViewer.message.id
+                    ? { ...currentViewer, hasFailed: true }
+                    : currentViewer);
+            }
+            return;
+        }
+
+        const messageId = imageViewer.message.id;
+
+        setImageViewer((currentViewer) => currentViewer?.message.id === messageId
+            ? { ...currentViewer, isRefreshing: true }
+            : currentViewer);
+
+        void getMessageImageUrl(chat.id, messageId)
+            .then((nextImageUrl) => {
+                setImageViewer((currentViewer) => currentViewer?.message.id === messageId
+                    ? {
+                        ...currentViewer,
+                        imageUrl: nextImageUrl,
+                        hasRetried: true,
+                        isRefreshing: false,
+                    }
+                    : currentViewer);
+            })
+            .catch(() => {
+                showSnackbar({ message: "Could not load image.", severity: "error" });
+                setImageViewer((currentViewer) => currentViewer?.message.id === messageId
+                    ? {
+                        ...currentViewer,
+                        hasRetried: true,
+                        isRefreshing: false,
+                        hasFailed: true,
+                    }
+                    : currentViewer);
+            });
+    };
+
     const replaceCurrentShortcut = (appendText = '') => {
         const input = messageInputRef.current;
         const selectionStart = input?.selectionStart ?? messageContent.length;
@@ -440,6 +717,7 @@ export default function ChatsMain({
             top: container.scrollHeight,
             behavior,
         });
+        wasNearBottomRef.current = true;
         setShowScrollToBottom(false);
     };
 
@@ -517,6 +795,25 @@ export default function ChatsMain({
         stopCurrentTyping();
     }, [stopCurrentTyping]);
 
+    useEffect(() => {
+        if (!selectedImageFile) {
+            setSelectedImagePreviewUrl(null);
+            return;
+        }
+
+        const objectUrl = URL.createObjectURL(selectedImageFile);
+        setSelectedImagePreviewUrl(objectUrl);
+
+        return () => {
+            URL.revokeObjectURL(objectUrl);
+        };
+    }, [selectedImageFile]);
+
+    useEffect(() => {
+        clearSelectedImage();
+        setImageViewer(null);
+    }, [chat?.id, clearSelectedImage]);
+
     if (!chat) {
         return (
             <Box
@@ -549,6 +846,7 @@ export default function ChatsMain({
                 minHeight: 0,
                 display: 'flex',
                 flexDirection: 'column',
+                position: 'relative',
                 border: '1px solid',
                 borderColor: 'divider',
                 borderRadius: 1,
@@ -600,6 +898,138 @@ export default function ChatsMain({
                 </Tooltip>
             </Stack>
 
+            <Box
+                sx={{
+                    flex: 1,
+                    minHeight: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                }}
+            >
+            {selectedImageFile && selectedImagePreviewUrl && (
+                <Box
+                    sx={{
+                        position: 'absolute',
+                        inset: 0,
+                        zIndex: 2,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        backgroundColor: 'background.default',
+                    }}
+                >
+                    <Stack
+                        direction="row"
+                        alignItems="center"
+                        spacing={1}
+                        sx={{
+                            px: 2,
+                            py: 1.5,
+                            borderBottom: '1px solid',
+                            borderColor: 'divider',
+                            backgroundColor: 'background.paper',
+                        }}
+                    >
+                        <Tooltip title="Back">
+                            <span>
+                                <IconButton
+                                    aria-label="Back to chat"
+                                    disabled={isSendingImage}
+                                    onClick={() => clearSelectedImage()}
+                                >
+                                    <ArrowBackIcon />
+                                </IconButton>
+                            </span>
+                        </Tooltip>
+                        <Typography sx={{ color: 'text.primary', fontWeight: 800 }} noWrap>
+                            Send image
+                        </Typography>
+                    </Stack>
+
+                    <Box
+                        sx={{
+                            flex: 1,
+                            minHeight: 0,
+                            display: 'grid',
+                            placeItems: 'center',
+                            p: { xs: 2, md: 4 },
+                            overflow: 'hidden',
+                        }}
+                    >
+                        <Box sx={{ width: '100%', height: '100%', minHeight: 0, position: 'relative' }}>
+                            <Box
+                                component="img"
+                                src={selectedImagePreviewUrl}
+                                alt=""
+                                sx={{
+                                    display: 'block',
+                                    position: 'absolute',
+                                    inset: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'contain',
+                                    objectPosition: 'center',
+                                    borderRadius: 1,
+                                    backgroundColor: 'background.paper',
+                                }}
+                            />
+                        </Box>
+                    </Box>
+
+                    <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="flex-end"
+                        sx={{
+                            p: 2,
+                            borderTop: '1px solid',
+                            borderColor: 'divider',
+                            backgroundColor: 'background.paper',
+                        }}
+                    >
+                        <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <TextField
+                                fullWidth
+                                multiline
+                                maxRows={4}
+                                size="small"
+                                placeholder="Add a caption"
+                                value={imageCaption}
+                                disabled={isSendingImage}
+                                error={!!imageError}
+                                helperText={imageError}
+                                onChange={(event) => setImageCaption(event.target.value)}
+                                onKeyDown={(event) => {
+                                    if (event.key === "Enter" && !event.shiftKey) {
+                                        event.preventDefault();
+                                        void handleSendSelectedImage();
+                                    }
+                                }}
+                            />
+                        </Box>
+                        <Tooltip title="Send image">
+                            <span>
+                                <IconButton
+                                    aria-label="Send image"
+                                    disabled={isSendingImage}
+                                    sx={{
+                                        width: 40,
+                                        height: 40,
+                                        color: 'primary.contrastText',
+                                        backgroundColor: 'primary.main',
+                                        '&.Mui-disabled': {
+                                            backgroundColor: 'rgba(148, 163, 184, 0.14)',
+                                            color: 'rgba(226, 232, 240, 0.32)',
+                                        },
+                                    }}
+                                    onClick={() => void handleSendSelectedImage()}
+                                >
+                                    {isSendingImage ? <CircularProgress size={18} color="inherit" /> : <SendIcon fontSize="small" />}
+                                </IconButton>
+                            </span>
+                        </Tooltip>
+                    </Stack>
+                </Box>
+            )}
             <Box
                 sx={{
                     flex: 1,
@@ -672,6 +1102,7 @@ export default function ChatsMain({
                             const showGroupTime = !continuesNextGroup;
                             const showDaySeparator = !previousMessage || !isSameCalendarDate(message.createdAt, previousMessage.createdAt);
                             const showNewMessagesDivider = message.id === newMessagesDividerMessageId;
+                            const isLatestMessage = index === messages.length - 1;
 
                             return (
                                 <Fragment key={message.id}>
@@ -719,15 +1150,17 @@ export default function ChatsMain({
                                         <Stack
                                             spacing={0.35}
                                             alignItems={isOwn ? 'flex-end' : 'flex-start'}
-                                            sx={{ maxWidth: 'min(520px, 78%)', minWidth: 0 }}
+                                            sx={{ maxWidth: 'min(520px, 78%)', minWidth: 0, overflow: 'hidden' }}
                                         >
                                             <Tooltip title={formatDetailedTimestamp(message.createdAt)} placement={isOwn ? 'left' : 'right'}>
                                                 <Box
                                                     sx={{
+                                                        width: message.hasImage ? 'fit-content' : 'auto',
                                                         maxWidth: '100%',
                                                         minWidth: 0,
-                                                        px: 1.75,
-                                                        py: 1,
+                                                        overflow: 'hidden',
+                                                        px: message.hasImage ? 0.75 : 1.75,
+                                                        py: message.hasImage ? 0.75 : 1,
                                                         borderRadius: 1,
                                                         backgroundColor: isOwn ? 'primary.main' : 'background.paper',
                                                         color: isOwn ? 'primary.contrastText' : 'text.primary',
@@ -735,16 +1168,43 @@ export default function ChatsMain({
                                                         borderColor: isOwn ? 'primary.main' : 'divider',
                                                     }}
                                                 >
-                                                    <Typography
-                                                        variant="body2"
-                                                        sx={{
-                                                            whiteSpace: 'pre-wrap',
-                                                            overflowWrap: 'anywhere',
-                                                            wordBreak: 'break-word',
-                                                        }}
+                                                    <Stack
+                                                        spacing={message.hasImage && message.text ? 1 : 0}
+                                                        alignItems={message.hasImage ? 'flex-start' : 'stretch'}
                                                     >
-                                                        {message.text}
-                                                    </Typography>
+                                                        {message.hasImage && (
+                                                            <MessageImage
+                                                                chatId={chat.id}
+                                                                message={message}
+                                                                onOpen={(imageUrl, viewerMessage) => {
+                                                                    setImageViewer({
+                                                                        imageUrl,
+                                                                        message: viewerMessage,
+                                                                        hasRetried: false,
+                                                                        isRefreshing: false,
+                                                                        hasFailed: false,
+                                                                    });
+                                                                }}
+                                                                onLoad={() => {
+                                                                    if (wasNearBottomRef.current || (isLatestMessage && isOwn)) {
+                                                                        scrollToBottom();
+                                                                    }
+                                                                }}
+                                                            />
+                                                        )}
+                                                        {message.text && (
+                                                            <Typography
+                                                                variant="body2"
+                                                                sx={{
+                                                                    whiteSpace: 'pre-wrap',
+                                                                    overflowWrap: 'anywhere',
+                                                                    wordBreak: 'break-word',
+                                                                }}
+                                                            >
+                                                                {message.text}
+                                                            </Typography>
+                                                        )}
+                                                    </Stack>
                                                 </Box>
                                             </Tooltip>
                                             {showGroupTime && (
@@ -784,6 +1244,7 @@ export default function ChatsMain({
                     </Tooltip>
                 )}
             </Box>
+            </Box>
 
             <Stack
                 direction="row"
@@ -796,6 +1257,31 @@ export default function ChatsMain({
                     flexShrink: 0,
                 }}
             >
+                <Tooltip title="Attach image">
+                    <span>
+                        <IconButton
+                            aria-label="Attach image"
+                            disabled={isSendingMessage || isPreparingImage}
+                            onClick={() => imageInputRef.current?.click()}
+                            sx={{
+                                width: 40,
+                                height: 40,
+                                border: '1px solid',
+                                borderColor: 'divider',
+                                backgroundColor: 'background.default',
+                            }}
+                        >
+                            {isPreparingImage ? <CircularProgress size={18} color="inherit" /> : <AddPhotoAlternateOutlinedIcon fontSize="small" />}
+                        </IconButton>
+                        <input
+                            ref={imageInputRef}
+                            hidden
+                            type="file"
+                            accept="image/png,image/jpeg"
+                            onChange={handleImageFileChange}
+                        />
+                    </span>
+                </Tooltip>
                 <Tooltip title="Add emoji">
                     <span>
                         <IconButton
@@ -925,6 +1411,90 @@ export default function ChatsMain({
                     </span>
                 </Tooltip>
             </Stack>
+            <Dialog
+                open={imageViewer !== null}
+                onClose={() => setImageViewer(null)}
+                maxWidth={false}
+                slotProps={{
+                    paper: {
+                        sx: {
+                            width: 'fit-content',
+                            maxWidth: 'calc(100vw - 32px)',
+                            maxHeight: 'calc(100vh - 32px)',
+                            m: 2,
+                            overflow: 'hidden',
+                            backgroundColor: 'background.paper',
+                        },
+                    },
+                }}
+            >
+                {imageViewer && (
+                    <Box sx={{ p: 1.5, maxWidth: 'min(960px, calc(100vw - 32px))', position: 'relative' }}>
+                        <Tooltip title="Close">
+                            <IconButton
+                                aria-label="Close image"
+                                onClick={() => setImageViewer(null)}
+                                sx={{
+                                    position: 'absolute',
+                                    top: 8,
+                                    right: 8,
+                                    zIndex: 1,
+                                    width: 34,
+                                    height: 34,
+                                    color: 'common.white',
+                                    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+                                    '&:hover': {
+                                        backgroundColor: 'rgba(15, 23, 42, 0.88)',
+                                    },
+                                }}
+                            >
+                                <CloseIcon fontSize="small" />
+                            </IconButton>
+                        </Tooltip>
+                        <Box
+                            component="img"
+                            src={imageViewer.imageUrl}
+                            alt=""
+                            onError={handleViewerImageError}
+                            sx={{
+                                display: 'block',
+                                maxWidth: '100%',
+                                maxHeight: imageViewer.message.text ? 'calc(100vh - 152px)' : 'calc(100vh - 64px)',
+                                objectFit: 'contain',
+                                borderRadius: 1,
+                            }}
+                        />
+                        {imageViewer.isRefreshing && (
+                            <Box
+                                sx={{
+                                    position: 'absolute',
+                                    inset: 0,
+                                    display: 'grid',
+                                    placeItems: 'center',
+                                    backgroundColor: 'rgba(0, 0, 0, 0.28)',
+                                    borderRadius: 1,
+                                }}
+                            >
+                                <CircularProgress size={28} color="inherit" />
+                            </Box>
+                        )}
+                        {imageViewer.message.text && (
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    mt: 1.25,
+                                    color: 'text.primary',
+                                    whiteSpace: 'pre-wrap',
+                                    overflowWrap: 'anywhere',
+                                    wordBreak: 'break-word',
+                                }}
+                            >
+                                {imageViewer.message.text}
+                            </Typography>
+                        )}
+                    </Box>
+                )}
+            </Dialog>
         </Box>
     );
 }

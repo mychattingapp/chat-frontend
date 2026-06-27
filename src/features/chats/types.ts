@@ -24,7 +24,9 @@ export type Chat = {
 export type ChatMessage = {
     id: string;
     senderId: string;
-    text: string;
+    text: string | null;
+    hasImage: boolean;
+    imageContentType: "image/png" | "image/jpeg" | null;
     createdAt: string;
 };
 

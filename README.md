@@ -6,6 +6,10 @@ Frontend for **mychattingapp**, a real-time chat application.
 
 - Backend: https://github.com/mychattingapp/chat-backend
 
+## Project Overview
+
+This frontend provides the browser experience for **mychattingapp**, including secure sign-in, friend management, direct text and image messaging, message history, unread state, presence, typing indicators, and profile settings.
+
 ## Tech Stack
 
 - **React**
@@ -21,9 +25,13 @@ Frontend for **mychattingapp**, a real-time chat application.
 - Cookie-based auth integration with the backend is in place.
 - Authenticated chat socket connection with cookie credentials.
 - Friends, friend requests, and start-chat flows.
-- Direct chat list with last-message previews and relative timestamps.
-- Message view with grouped bubbles, timestamps, day separators, older-message pagination, and scroll-to-latest affordance.
+- Direct chat list with last-message previews, relative timestamps, profile avatars, unread badges, and image-message previews.
+- Message view with grouped bubbles, image bubbles, timestamps, day separators, unread dividers, older-message pagination, and scroll-to-latest affordance.
+- Image sending supports client-side validation/compression, caption entry, private signed uploads, and a click-to-view image modal.
+- Real-time presence, typing indicators, new-chat notifications, and incoming-message updates.
 - Sending state disables the composer until the current message send completes.
+- Emoji picker and text shortcut replacement for common emoji.
+- Profile settings support display-name edits and avatar uploads.
 - Optional incoming-message notification sound from `public/sounds/message-notification.mp3`.
 - Vercel SPA rewrites are configured for client-side routes.
 
@@ -81,6 +89,11 @@ npm run preview
 ```
 
 Previews the production build locally.
+
+## Deployment
+
+- The app is configured for Vercel hosting.
+- `vercel.json` rewrites all routes to `index.html` so client-side routing works on refresh and direct navigation.
 
 ## Project Structure
 

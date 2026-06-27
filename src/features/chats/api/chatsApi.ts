@@ -34,6 +34,27 @@ type SendMessageResponse = {
     };
 };
 
+type MessageUploadUrlResponse = {
+    success: boolean;
+    data: {
+        uploadUrl: string;
+        contentType: "image/png" | "image/jpeg";
+        key: string;
+    };
+};
+
+type MessageImageUrlResponse = {
+    success: boolean;
+    data: {
+        imageUrl: string;
+    };
+};
+
+export type SendChatMessagePayload = {
+    text?: string;
+    imageKey?: string;
+};
+
 export const openDirectChat = async (friendId: string) => {
     const response = await apiRequest<OpenDirectChatResponse>("api/chats", {
         method: "POST",
@@ -82,14 +103,38 @@ export const getChatMessages = async (chatId: string, cursor?: MessageCursor | n
     return response.data;
 };
 
-export const sendChatMessage = async (chatId: string, text: string) => {
+export const sendChatMessage = async (chatId: string, payload: SendChatMessagePayload) => {
     const response = await apiRequest<SendMessageResponse>(`api/chats/${chatId}/messages`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(payload),
     });
 
     return response.data.message;
+};
+
+export const getMessageImageUploadUrl = async (file: File) => {
+    const response = await apiRequest<MessageUploadUrlResponse>("api/images/upload-url", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            purpose: "message",
+            fileType: file.type,
+            fileSize: file.size,
+        }),
+    });
+
+    return response.data;
+};
+
+export const getMessageImageUrl = async (chatId: string, messageId: string) => {
+    const response = await apiRequest<MessageImageUrlResponse>(`api/chats/${chatId}/messages/${messageId}/image-url`, {
+        method: "GET",
+    });
+
+    return response.data.imageUrl;
 };
