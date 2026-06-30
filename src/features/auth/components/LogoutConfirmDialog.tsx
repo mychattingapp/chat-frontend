@@ -21,7 +21,19 @@ export default function LogoutConfirmDialog({
     onConfirm,
 }: LogoutConfirmDialogProps) {
     return (
-        <Dialog open={open} onClose={isLoggingOut ? undefined : onClose} fullWidth maxWidth="xs">
+        <Dialog
+            open={open}
+            onClose={isLoggingOut ? undefined : onClose}
+            fullWidth
+            maxWidth="xs"
+            slotProps={{
+                paper: {
+                    sx: {
+                        m: { xs: 1.5, sm: 4 },
+                    },
+                },
+            }}
+        >
             <DialogTitle sx={{ fontWeight: 800 }}>
                 Log out of MyChattingApp?
             </DialogTitle>

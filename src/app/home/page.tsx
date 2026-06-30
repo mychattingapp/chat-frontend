@@ -1,4 +1,6 @@
 import { Avatar, Box, IconButton, Stack, Tooltip, Typography } from "@mui/material";
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PeopleOutlineIcon from '@mui/icons-material/PeopleOutline';
@@ -52,9 +54,13 @@ const getInitials = (name: string) => name
     .toUpperCase();
 
 export default function HomePage() {
+    const theme = useTheme();
+    const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
     const { user } = useAuth();
     const { handleLogout, isLoading: isLoggingOut } = useOAuthLogin();
     const [activeTab, setActiveTab] = useState<HomeTab>('chats');
+    const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+    const [isMobileFriendViewOpen, setIsMobileFriendViewOpen] = useState(false);
     const [activeFriendView, setActiveFriendView] = useState<FriendView>('all');
     const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
     const [isStartChatOpen, setIsStartChatOpen] = useState(false);
@@ -62,11 +68,29 @@ export default function HomePage() {
     const friends = useFriendRequests(activeTab === 'friends');
     const activeConfig = tabConfig[activeTab];
     const shouldShowSidebar = activeTab !== 'profile';
-    const chats = useChats(activeTab === 'chats');
+    const isChatDetailVisible = activeTab === 'chats' && (isDesktop || isMobileChatOpen);
+    const shouldShowMobileNav = !(activeTab === 'chats' && isMobileChatOpen);
+    const chats = useChats(isChatDetailVisible);
+    const selectedSidebarChatId = isChatDetailVisible ? chats.selectedChat?.id ?? null : null;
+    const loadChats = chats.loadChats;
     const profileImageSrc = getProfileImageSrc(user?.profileImageUrl, user?.updatedAt);
+    const handleTabChange = (tab: HomeTab) => {
+        setActiveTab(tab);
+        setIsMobileChatOpen(false);
+        setIsMobileFriendViewOpen(false);
+    };
+    const handleFriendViewChange = (view: FriendView) => {
+        setActiveFriendView(view);
+        setIsMobileFriendViewOpen(true);
+    };
     const handleMessageFriend = (friendId: string) => {
         setActiveTab('chats');
-        void chats.startDirectChat(friendId);
+        setIsMobileFriendViewOpen(false);
+        void chats.startDirectChat(friendId).then((didStartChat) => {
+            if (didStartChat) {
+                setIsMobileChatOpen(true);
+            }
+        });
     };
     const handleOpenStartChat = () => {
         setIsStartChatOpen(true);
@@ -77,22 +101,34 @@ export default function HomePage() {
     };
     const handleStartChat = async (friendId: string) => {
         setActiveTab('chats');
-        return chats.startDirectChat(friendId);
+        setIsMobileFriendViewOpen(false);
+        const didStartChat = await chats.startDirectChat(friendId);
+
+        if (didStartChat) {
+            setIsMobileChatOpen(true);
+        }
+
+        return didStartChat;
+    };
+    const handleSelectChat = (chatId: string) => {
+        setIsMobileChatOpen(true);
+        void chats.selectChat(chatId);
     };
 
     useEffect(() => {
         if (activeTab === 'chats') {
-            void chats.loadChats();
+            void loadChats();
         }
-    }, [activeTab, chats.loadChats]);
+    }, [activeTab, loadChats]);
 
     return (
         <Box
             sx={{
-                height: '100vh',
+                height: '100dvh',
                 width: '100%',
                 overflow: 'hidden',
                 display: 'flex',
+                flexDirection: { xs: 'column', md: 'row' },
                 backgroundColor: 'background.default',
                 color: 'text.primary',
             }}
@@ -105,7 +141,7 @@ export default function HomePage() {
                     height: '100%',
                     backgroundColor: 'background.paper',
                     color: 'text.secondary',
-                    display: 'flex',
+                    display: { xs: 'none', md: 'flex' },
                     flexDirection: 'column',
                     alignItems: 'center',
                     py: 2,
@@ -138,7 +174,7 @@ export default function HomePage() {
                             <Tooltip title={tabConfig[tab].label} placement="right" key={tab}>
                                 <IconButton
                                     aria-label={tabConfig[tab].label}
-                                    onClick={() => setActiveTab(tab)}
+                                    onClick={() => handleTabChange(tab)}
                                     sx={{
                                         width: 46,
                                         height: 46,
@@ -161,7 +197,7 @@ export default function HomePage() {
                     <Tooltip title="Profile" placement="right">
                         <IconButton
                             aria-label="Profile"
-                            onClick={() => setActiveTab('profile')}
+                            onClick={() => handleTabChange('profile')}
                             sx={{
                                 width: 46,
                                 height: 46,
@@ -212,13 +248,20 @@ export default function HomePage() {
                 <Box
                     component="aside"
                     sx={{
-                        width: 380,
+                        width: { xs: '100%', md: 380 },
+                        flex: { xs: 1, md: '0 0 auto' },
+                        minHeight: 0,
                         flexShrink: 0,
-                        p: 3,
+                        p: { xs: 2, md: 3 },
                         borderRight: '1px solid',
+                        borderBottom: { xs: '1px solid', md: 0 },
                         borderColor: 'divider',
                         backgroundColor: 'background.paper',
                         overflow: 'auto',
+                        display: {
+                            xs: (activeTab === 'chats' && !isMobileChatOpen) || (activeTab === 'friends' && !isMobileFriendViewOpen) ? 'block' : 'none',
+                            md: 'block',
+                        },
                     }}
                 >
                     <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary' }}>
@@ -234,14 +277,14 @@ export default function HomePage() {
                             isLoading={chats.isLoadingChats}
                             loadError={chats.loadError}
                             onRetry={chats.loadChats}
-                            selectedChatId={chats.selectedChat?.id ?? null}
-                            onSelectChat={chats.selectChat}
+                            selectedChatId={selectedSidebarChatId}
+                            onSelectChat={handleSelectChat}
                             onStartChat={handleOpenStartChat}
                         />
                     ) : (
                         <FriendsSidebar
-                            activeFriendView={activeFriendView}
-                            onFriendViewChange={setActiveFriendView}
+                            activeFriendView={isDesktop || isMobileFriendViewOpen ? activeFriendView : null}
+                            onFriendViewChange={handleFriendViewChange}
                             counts={friends.counts}
                         />
                     )}
@@ -253,10 +296,23 @@ export default function HomePage() {
                 sx={{
                     flex: 1,
                     minWidth: 0,
-                    p: activeTab === 'chats' ? 0 : { xs: 3, md: 5 },
+                    minHeight: 0,
+                    p: activeTab === 'chats' ? 0 : { xs: 2, md: 5 },
                     display: 'flex',
                     flexDirection: 'column',
                     overflow: activeTab === 'chats' ? 'hidden' : 'auto',
+                    ...(activeTab === 'chats' && {
+                        display: {
+                            xs: isMobileChatOpen ? 'flex' : 'none',
+                            md: 'flex',
+                        },
+                    }),
+                    ...(activeTab === 'friends' && {
+                        display: {
+                            xs: isMobileFriendViewOpen ? 'flex' : 'none',
+                            md: 'flex',
+                        },
+                    }),
                 }}
             >
                 {activeTab === 'chats' &&
@@ -275,6 +331,9 @@ export default function HomePage() {
                         sendImageMessage={chats.sendImageMessage}
                         startTyping={chats.startTyping}
                         stopTyping={chats.stopTyping}
+                        showBackButton={isMobileChatOpen}
+                        onBack={() => setIsMobileChatOpen(false)}
+                        isPaneVisible={isChatDetailVisible}
                     />}
                 {activeTab === 'friends' &&
                     <FriendsMain
@@ -292,9 +351,81 @@ export default function HomePage() {
                         onAccept={friends.acceptFriendRequest}
                         onReject={friends.rejectFriendRequest}
                         onMessageFriend={handleMessageFriend}
+                        showBackButton={isMobileFriendViewOpen}
+                        onBack={() => setIsMobileFriendViewOpen(false)}
                     />
                 }
                 {activeTab === 'profile' && <ProfileMain />}
+            </Box>
+
+            <Box
+                component="nav"
+                sx={{
+                    display: { xs: shouldShowMobileNav ? 'flex' : 'none', md: 'none' },
+                    flexShrink: 0,
+                    height: 'calc(64px + env(safe-area-inset-bottom))',
+                    pb: 'env(safe-area-inset-bottom)',
+                    px: 1,
+                    alignItems: 'center',
+                    justifyContent: 'space-around',
+                    borderTop: '1px solid',
+                    borderColor: 'divider',
+                    backgroundColor: 'background.paper',
+                }}
+            >
+                {(['chats', 'friends'] as HomeTab[]).map((tab) => {
+                    const Icon = tabConfig[tab].icon;
+                    const selected = activeTab === tab;
+
+                    return (
+                        <IconButton
+                            key={tab}
+                            aria-label={tabConfig[tab].label}
+                            onClick={() => handleTabChange(tab)}
+                            sx={{
+                                width: 48,
+                                height: 48,
+                                color: selected ? 'primary.contrastText' : 'text.secondary',
+                                backgroundColor: selected ? 'primary.main' : 'transparent',
+                                borderRadius: 1,
+                            }}
+                        >
+                            <Icon />
+                        </IconButton>
+                    );
+                })}
+                <IconButton
+                    aria-label="Profile"
+                    onClick={() => handleTabChange('profile')}
+                    sx={{
+                        width: 48,
+                        height: 48,
+                        color: activeTab === 'profile' ? 'primary.contrastText' : 'text.secondary',
+                        backgroundColor: activeTab === 'profile' ? 'primary.main' : 'transparent',
+                        borderRadius: 1,
+                    }}
+                >
+                    <Avatar
+                        src={profileImageSrc}
+                        sx={{
+                            width: 32,
+                            height: 32,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            backgroundColor: activeTab === 'profile' ? 'primary.contrastText' : 'action.selected',
+                            color: activeTab === 'profile' ? 'primary.main' : 'text.primary',
+                        }}
+                    >
+                        {!profileImageSrc ? getInitials(user?.name ?? "User") : null}
+                    </Avatar>
+                </IconButton>
+                <IconButton
+                    aria-label="Logout"
+                    onClick={() => setIsLogoutDialogOpen(true)}
+                    sx={{ width: 48, height: 48, borderRadius: 1 }}
+                >
+                    <LogoutIcon />
+                </IconButton>
             </Box>
 
             <AddFriendDialog

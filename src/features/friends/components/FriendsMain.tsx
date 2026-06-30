@@ -1,5 +1,6 @@
 import AddIcon from '@mui/icons-material/Add';
-import { Box, Button, Stack, Typography } from "@mui/material";
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { Box, Button, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import FriendList from "./FriendList";
 import type { Friend, FriendListItem, FriendView, ReceivedFriendRequest, SentFriendRequest } from "../types";
 
@@ -37,6 +38,8 @@ type FriendsMainProps = {
     onAccept: (friendRequestId: string) => Promise<void>;
     onReject: (friendRequestId: string) => Promise<void>;
     onMessageFriend?: (friendId: string) => void;
+    showBackButton?: boolean;
+    onBack?: () => void;
 };
 
 const mapReceivedRequest = (request: ReceivedFriendRequest): FriendListItem => ({
@@ -82,6 +85,8 @@ export default function FriendsMain({
     onAccept,
     onReject,
     onMessageFriend,
+    showBackButton = false,
+    onBack,
 }: FriendsMainProps) {
     const content = titles[activeFriendView];
     const items = activeFriendView === 'all'
@@ -97,9 +102,6 @@ export default function FriendsMain({
 
     return (
         <Box sx={{ width: '100%', flex: 1 }}>
-            {/* <Typography variant="overline" sx={{ color: 'primary.light', fontWeight: 800, letterSpacing: 1.4 }}>
-                Friends
-            </Typography> */}
             <Stack
                 direction={{ xs: 'column', sm: 'row' }}
                 alignItems={{ xs: 'flex-start', sm: 'center' }}
@@ -107,14 +109,35 @@ export default function FriendsMain({
                 spacing={2}
                 sx={{ mb: 4 }}
             >
-                <Box>
-                    <Typography variant="h3" sx={{ color: 'text.primary', fontWeight: 800, mt: 1 }}>
-                        {content.title}
-                    </Typography>
-                    <Typography variant="body1" sx={{ color: 'text.secondary', mt: 1.5 }}>
-                        {content.description}
-                    </Typography>
-                </Box>
+                <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ minWidth: 0 }}>
+                    {showBackButton && (
+                        <Tooltip title="Back to friends">
+                            <IconButton
+                                aria-label="Back to friends"
+                                onClick={onBack}
+                                sx={{ display: { xs: 'inline-flex', md: 'none' }, mt: 0.5, flexShrink: 0 }}
+                            >
+                                <ArrowBackIcon />
+                            </IconButton>
+                        </Tooltip>
+                    )}
+                    <Box sx={{ minWidth: 0 }}>
+                        <Typography
+                            variant="h3"
+                            sx={{
+                                color: 'text.primary',
+                                fontWeight: 800,
+                                mt: 1,
+                                fontSize: { xs: '1.75rem', md: '3rem' },
+                            }}
+                        >
+                            {content.title}
+                        </Typography>
+                        <Typography variant="body1" sx={{ color: 'text.secondary', mt: 1.5 }}>
+                            {content.description}
+                        </Typography>
+                    </Box>
+                </Stack>
                 {activeFriendView === 'all' && (
                     <Button
                         variant="contained"

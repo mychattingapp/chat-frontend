@@ -13,7 +13,7 @@ export default function FriendsSidebar({
     onFriendViewChange,
     counts,
 }: {
-    activeFriendView: FriendView;
+    activeFriendView: FriendView | null;
     onFriendViewChange: (view: FriendView) => void;
     counts: FriendRequestCounts;
 }) {
