@@ -62,7 +62,20 @@ export default function StartChatDialog({
     };
 
     return (
-        <Dialog open={open} onClose={handleClose} fullWidth maxWidth="xs">
+        <Dialog
+            open={open}
+            onClose={handleClose}
+            fullWidth
+            maxWidth="xs"
+            slotProps={{
+                paper: {
+                    sx: {
+                        m: { xs: 1.5, sm: 4 },
+                        maxHeight: { xs: 'calc(100dvh - 24px)', sm: 'calc(100% - 64px)' },
+                    },
+                },
+            }}
+        >
             <DialogTitle sx={{ fontWeight: 800 }}>
                 Start chat
             </DialogTitle>

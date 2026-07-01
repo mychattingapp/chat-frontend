@@ -22,7 +22,7 @@ body {
   width: 100%;
   overflow: hidden;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh;
   background-color: #050816;
 }
 

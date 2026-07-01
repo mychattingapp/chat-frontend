@@ -3,7 +3,6 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CloseIcon from '@mui/icons-material/Close';
 import InsertEmoticonOutlinedIcon from '@mui/icons-material/InsertEmoticonOutlined';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SendIcon from '@mui/icons-material/Send';
 import { Avatar, Box, Button, CircularProgress, Dialog, IconButton, Popover, Stack, TextField, Tooltip, Typography } from "@mui/material";
 import type { Chat, ChatMessage } from '../types';
@@ -31,6 +30,9 @@ type ChatsMainProps = {
     sendImageMessage: (file: File, caption: string) => Promise<boolean>;
     startTyping: (chatId: string) => void;
     stopTyping: (chatId: string) => void;
+    showBackButton?: boolean;
+    onBack?: () => void;
+    isPaneVisible?: boolean;
 };
 
 type ImageViewerState = {
@@ -366,6 +368,9 @@ export default function ChatsMain({
     sendImageMessage,
     startTyping,
     stopTyping,
+    showBackButton = false,
+    onBack,
+    isPaneVisible = true,
 }: ChatsMainProps) {
     const { user } = useAuth();
     const { showSnackbar } = useSnackbar();
@@ -390,6 +395,8 @@ export default function ChatsMain({
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const previousChatIdRef = useRef<string | null>(null);
     const previousLastMessageIdRef = useRef<string | null>(null);
+    const previousPaneVisibleRef = useRef(isPaneVisible);
+    const previousNewMessagesDividerMessageIdRef = useRef<string | null>(null);
     const preserveScrollHeightRef = useRef<number | null>(null);
     const messageInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
     const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -738,12 +745,13 @@ export default function ChatsMain({
     useLayoutEffect(() => {
         const container = scrollContainerRef.current;
 
-        if (!container || !chat) {
+        if (!container || !chat || !isPaneVisible) {
             return;
         }
 
         const currentLastMessage = messages[messages.length - 1] ?? null;
         const chatChanged = previousChatIdRef.current !== chat.id;
+        const dividerChanged = previousNewMessagesDividerMessageIdRef.current !== newMessagesDividerMessageId;
 
         if (chatChanged) {
             setShowScrollToBottom(false);
@@ -754,7 +762,14 @@ export default function ChatsMain({
 
             previousChatIdRef.current = chat.id;
             previousLastMessageIdRef.current = currentLastMessage?.id ?? null;
+            previousNewMessagesDividerMessageIdRef.current = newMessagesDividerMessageId;
             preserveScrollHeightRef.current = null;
+            scrollToBottom();
+            return;
+        }
+
+        if (dividerChanged && newMessagesDividerMessageId && wasNearBottomRef.current) {
+            previousNewMessagesDividerMessageIdRef.current = newMessagesDividerMessageId;
             scrollToBottom();
             return;
         }
@@ -764,6 +779,7 @@ export default function ChatsMain({
             preserveScrollHeightRef.current = null;
             container.scrollTop = container.scrollHeight - previousScrollHeight + container.scrollTop;
             previousLastMessageIdRef.current = currentLastMessage?.id ?? null;
+            previousNewMessagesDividerMessageIdRef.current = newMessagesDividerMessageId;
             return;
         }
 
@@ -776,7 +792,21 @@ export default function ChatsMain({
         }
 
         previousLastMessageIdRef.current = currentLastMessage?.id ?? null;
-    }, [chat, currentUserId, messages]);
+        previousNewMessagesDividerMessageIdRef.current = newMessagesDividerMessageId;
+    }, [chat, currentUserId, isPaneVisible, messages, newMessagesDividerMessageId]);
+
+    useLayoutEffect(() => {
+        const becameVisible = isPaneVisible && !previousPaneVisibleRef.current;
+        previousPaneVisibleRef.current = isPaneVisible;
+
+        if (!becameVisible || !chat || messages.length === 0) {
+            return;
+        }
+
+        requestAnimationFrame(() => {
+            scrollToBottom();
+        });
+    }, [chat, isPaneVisible, messages.length]);
 
     useEffect(() => {
         if (isSendingMessage || !shouldFocusAfterSendRef.current) {
@@ -849,7 +879,7 @@ export default function ChatsMain({
                 position: 'relative',
                 border: '1px solid',
                 borderColor: 'divider',
-                borderRadius: 1,
+                borderRadius: { xs: 0, md: 1 },
                 backgroundColor: 'background.paper',
                 overflow: 'hidden',
             }}
@@ -860,7 +890,7 @@ export default function ChatsMain({
                 justifyContent="space-between"
                 spacing={2}
                 sx={{
-                    px: 2.5,
+                    px: { xs: 1.25, md: 2.5 },
                     py: 2,
                     borderBottom: '1px solid',
                     borderColor: 'divider',
@@ -868,6 +898,17 @@ export default function ChatsMain({
                 }}
             >
                 <Stack direction="row" alignItems="center" spacing={1.5} sx={{ minWidth: 0 }}>
+                    {showBackButton && (
+                        <Tooltip title="Back to chats">
+                            <IconButton
+                                aria-label="Back to chats"
+                                onClick={onBack}
+                                sx={{ display: { xs: 'inline-flex', md: 'none' }, flexShrink: 0 }}
+                            >
+                                <ArrowBackIcon />
+                            </IconButton>
+                        </Tooltip>
+                    )}
                     <Avatar src={getProfileImageSrc(headerImageUrl, directChatParticipant?.updatedAt)} sx={{ width: 42, height: 42 }}>
                         {!headerImageUrl ? initials : null}
                     </Avatar>
@@ -889,13 +930,6 @@ export default function ChatsMain({
                         )}
                     </Box>
                 </Stack>
-                <Tooltip title="Conversation actions">
-                    <span>
-                        <IconButton aria-label="Conversation actions" disabled>
-                            <MoreVertIcon />
-                        </IconButton>
-                    </span>
-                </Tooltip>
             </Stack>
 
             <Box
@@ -1418,10 +1452,11 @@ export default function ChatsMain({
                 slotProps={{
                     paper: {
                         sx: {
-                            width: 'fit-content',
-                            maxWidth: 'calc(100vw - 32px)',
-                            maxHeight: 'calc(100vh - 32px)',
-                            m: 2,
+                            width: { xs: 'calc(100vw - 16px)', sm: 'min(960px, calc(100vw - 32px))' },
+                            height: { xs: 'calc(100dvh - 16px)', sm: 'min(720px, calc(100dvh - 32px))' },
+                            maxWidth: 'none',
+                            maxHeight: 'none',
+                            m: { xs: 1, sm: 2 },
                             overflow: 'hidden',
                             backgroundColor: 'background.paper',
                         },
@@ -1429,7 +1464,17 @@ export default function ChatsMain({
                 }}
             >
                 {imageViewer && (
-                    <Box sx={{ p: 1.5, maxWidth: 'min(960px, calc(100vw - 32px))', position: 'relative' }}>
+                    <Box
+                        sx={{
+                            width: '100%',
+                            height: '100%',
+                            p: 1.5,
+                            position: 'relative',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: imageViewer.message.text ? 1.25 : 0,
+                        }}
+                    >
                         <Tooltip title="Close">
                             <IconButton
                                 aria-label="Close image"
@@ -1452,23 +1497,37 @@ export default function ChatsMain({
                             </IconButton>
                         </Tooltip>
                         <Box
-                            component="img"
-                            src={imageViewer.imageUrl}
-                            alt=""
-                            onError={handleViewerImageError}
                             sx={{
-                                display: 'block',
-                                maxWidth: '100%',
-                                maxHeight: imageViewer.message.text ? 'calc(100vh - 152px)' : 'calc(100vh - 64px)',
-                                objectFit: 'contain',
+                                flex: 1,
+                                minHeight: 0,
+                                minWidth: 0,
+                                display: 'grid',
+                                placeItems: 'center',
+                                overflow: 'hidden',
                                 borderRadius: 1,
+                                backgroundColor: 'background.default',
                             }}
-                        />
+                        >
+                            <Box
+                                component="img"
+                                src={imageViewer.imageUrl}
+                                alt=""
+                                onError={handleViewerImageError}
+                                sx={{
+                                    display: 'block',
+                                    width: '100%',
+                                    height: '100%',
+                                    minWidth: 0,
+                                    minHeight: 0,
+                                    objectFit: 'scale-down',
+                                }}
+                            />
+                        </Box>
                         {imageViewer.isRefreshing && (
                             <Box
                                 sx={{
                                     position: 'absolute',
-                                    inset: 0,
+                                    inset: 12,
                                     display: 'grid',
                                     placeItems: 'center',
                                     backgroundColor: 'rgba(0, 0, 0, 0.28)',
@@ -1482,7 +1541,9 @@ export default function ChatsMain({
                             <Typography
                                 variant="body2"
                                 sx={{
-                                    mt: 1.25,
+                                    flexShrink: 0,
+                                    maxHeight: '28%',
+                                    overflow: 'auto',
                                     color: 'text.primary',
                                     whiteSpace: 'pre-wrap',
                                     overflowWrap: 'anywhere',

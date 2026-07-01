@@ -381,14 +381,15 @@ export function useChats(isChatViewActive: boolean) {
         onPresenceUpdate: handlePresenceUpdate,
         onError: handleSocketError
     });
+    const selectedChatId = selectedChat?.id ?? null;
 
     useEffect(() => {
-        selectedChatIdRef.current = selectedChat?.id ?? null;
+        selectedChatIdRef.current = selectedChatId;
 
-        if (!selectedChat) {
+        if (!selectedChatId) {
             activeMessageRequestChatIdRef.current = null;
         }
-    }, [selectedChat?.id]);
+    }, [selectedChatId]);
 
     useEffect(() => {
         isChatViewActiveRef.current = isChatViewActive;
