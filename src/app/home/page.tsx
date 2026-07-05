@@ -65,10 +65,13 @@ export default function HomePage() {
     const [isAddFriendOpen, setIsAddFriendOpen] = useState(false);
     const [isStartChatOpen, setIsStartChatOpen] = useState(false);
     const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
+    const [mobileViewportHeight, setMobileViewportHeight] = useState<number | null>(null);
     const friends = useFriendRequests(activeTab === 'friends');
     const activeConfig = tabConfig[activeTab];
     const shouldShowSidebar = activeTab !== 'profile';
     const isChatDetailVisible = activeTab === 'chats' && (isDesktop || isMobileChatOpen);
+    const isMobileChatDetailVisible = activeTab === 'chats' && !isDesktop && isMobileChatOpen;
+    const activeMobileViewportHeight = isMobileChatDetailVisible ? mobileViewportHeight : null;
     const shouldShowMobileNav = !(activeTab === 'chats' && isMobileChatOpen);
     const chats = useChats(isChatDetailVisible);
     const selectedSidebarChatId = isChatDetailVisible ? chats.selectedChat?.id ?? null : null;
@@ -121,10 +124,30 @@ export default function HomePage() {
         }
     }, [activeTab, loadChats]);
 
+    useEffect(() => {
+        if (!isMobileChatDetailVisible || typeof window === 'undefined' || !window.visualViewport) {
+            return;
+        }
+
+        const updateMobileViewportHeight = () => {
+            setMobileViewportHeight(window.visualViewport?.height ?? null);
+        };
+
+        const animationFrameId = window.requestAnimationFrame(updateMobileViewportHeight);
+        window.visualViewport.addEventListener('resize', updateMobileViewportHeight);
+        window.visualViewport.addEventListener('scroll', updateMobileViewportHeight);
+
+        return () => {
+            window.cancelAnimationFrame(animationFrameId);
+            window.visualViewport?.removeEventListener('resize', updateMobileViewportHeight);
+            window.visualViewport?.removeEventListener('scroll', updateMobileViewportHeight);
+        };
+    }, [isMobileChatDetailVisible]);
+
     return (
         <Box
             sx={{
-                height: '100dvh',
+                height: { xs: activeMobileViewportHeight ? `${activeMobileViewportHeight}px` : '100dvh', md: '100dvh' },
                 width: '100%',
                 overflow: 'hidden',
                 display: 'flex',
@@ -334,6 +357,8 @@ export default function HomePage() {
                         showBackButton={isMobileChatOpen}
                         onBack={() => setIsMobileChatOpen(false)}
                         isPaneVisible={isChatDetailVisible}
+                        stabilizeMobileKeyboard={isMobileChatDetailVisible}
+                        viewportHeight={activeMobileViewportHeight}
                     />}
                 {activeTab === 'friends' &&
                     <FriendsMain

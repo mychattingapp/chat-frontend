@@ -33,6 +33,8 @@ type ChatsMainProps = {
     showBackButton?: boolean;
     onBack?: () => void;
     isPaneVisible?: boolean;
+    stabilizeMobileKeyboard?: boolean;
+    viewportHeight?: number | null;
 };
 
 type ImageViewerState = {
@@ -371,6 +373,8 @@ export default function ChatsMain({
     showBackButton = false,
     onBack,
     isPaneVisible = true,
+    stabilizeMobileKeyboard = false,
+    viewportHeight = null,
 }: ChatsMainProps) {
     const { user } = useAuth();
     const { showSnackbar } = useSnackbar();
@@ -490,16 +494,31 @@ export default function ChatsMain({
         const contentToSend = contentOverride ?? messageContent;
         const trimmedContent = contentToSend.trim();
         if (!trimmedContent || isSendingMessage) return;
+        const submittedInputContent = messageContent;
 
         setEmojiAnchorEl(null);
         stopCurrentTyping();
         wasNearBottomRef.current = isNearBottom();
+
+        setMessageContent((currentContent) =>
+            currentContent === submittedInputContent ? "" : currentContent
+        );
+
         const didSend = await sendMessage(trimmedContent);
 
         if (didSend) {
-            shouldFocusAfterSendRef.current = true;
-            setMessageContent("");
+            if (!stabilizeMobileKeyboard) {
+                shouldFocusAfterSendRef.current = true;
+            }
+            return;
         }
+
+        setMessageContent((currentContent) =>
+            currentContent.length === 0
+                ? submittedInputContent
+                : `${submittedInputContent}\n${currentContent}`
+        );
+        showSnackbar({ message: "Failed to send message.", severity: "error" });
     }
 
     const clearSelectedImage = useCallback(() => {
@@ -808,14 +827,22 @@ export default function ChatsMain({
         });
     }, [chat, isPaneVisible, messages.length]);
 
+    useLayoutEffect(() => {
+        if (!stabilizeMobileKeyboard || !isPaneVisible || !viewportHeight || !wasNearBottomRef.current) {
+            return;
+        }
+
+        scrollToBottom();
+    }, [isPaneVisible, stabilizeMobileKeyboard, viewportHeight]);
+
     useEffect(() => {
-        if (isSendingMessage || !shouldFocusAfterSendRef.current) {
+        if (stabilizeMobileKeyboard || isSendingMessage || !shouldFocusAfterSendRef.current) {
             return;
         }
 
         shouldFocusAfterSendRef.current = false;
         messageInputRef.current?.focus();
-    }, [isSendingMessage, messageContent]);
+    }, [isSendingMessage, stabilizeMobileKeyboard]);
 
     useEffect(() => {
         stopCurrentTyping();
@@ -1257,6 +1284,11 @@ export default function ChatsMain({
                     <Tooltip title="Scroll to latest">
                         <IconButton
                             aria-label="Scroll to latest message"
+                            onPointerDown={(event) => {
+                                if (stabilizeMobileKeyboard) {
+                                    event.preventDefault();
+                                }
+                            }}
                             onClick={() => scrollToBottom('smooth')}
                             sx={{
                                 position: 'absolute',
@@ -1404,7 +1436,7 @@ export default function ChatsMain({
                     size="small"
                     placeholder="Message"
                     value={messageContent}
-                    disabled={isSendingMessage}
+                    disabled={isSendingMessage && !stabilizeMobileKeyboard}
                     inputRef={messageInputRef}
                     onChange={(e) => handleMessageContentChange(e.target.value)}
                     onKeyDown={(e) => {
@@ -1438,7 +1470,12 @@ export default function ChatsMain({
                                     color: 'rgba(226, 232, 240, 0.32)',
                                 },
                             }}
-                            onClick={() => void handleSendMessage()}
+                            onPointerDown={(event) => {
+                                if (stabilizeMobileKeyboard) {
+                                    event.preventDefault();
+                                }
+                            }}
+                            onClick={() => void handleSendMessage(replaceTrailingEmojiShortcut(messageContent))}
                         >
                             {isSendingMessage ? <CircularProgress size={18} color="inherit" /> : <SendIcon fontSize="small" />}
                         </IconButton>
