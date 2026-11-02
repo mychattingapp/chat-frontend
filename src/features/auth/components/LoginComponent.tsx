@@ -1,4 +1,4 @@
-import { Box, Button, Typography } from "@mui/material";
+import { Box, Button, Link, Typography } from "@mui/material";
 import { FcGoogle } from "react-icons/fc";
 import { FaMicrosoft, FaApple } from "react-icons/fa";
 import { useOAuthLogin } from "../index";
@@ -111,6 +111,12 @@ export default function LoginComponent() {
                 >
                     Continue with Apple
                 </Button>
+                <Typography variant="body2" align="center" sx={{ mt: 4, color: 'text.secondary' }}>
+                    A personal project exploring real-time chat.{' '}
+                    <Link href="https://github.com/mychattingapp" target="_blank" rel="noopener noreferrer" sx={{ whiteSpace: 'nowrap' }}>
+                        View on GitHub ↗
+                    </Link>
+                </Typography>
             </Box>
         </Box>
     );

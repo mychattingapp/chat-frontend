@@ -75,6 +75,7 @@ export type MarkSocketChatReadAck = {
 };
 
 export type ServerToClientEvents = {
+    "session:ready": () => void;
     "message:new": (event: NewSocketMessageEvent) => void;
     "chat:new": (event: NewSocketChatEvent) => void;
     "typing:update": (event: TypingSocketUpdateEvent) => void;

@@ -299,7 +299,7 @@ export default function HomePage() {
                             chats={chats.chats}
                             isLoading={chats.isLoadingChats}
                             loadError={chats.loadError}
-                            onRetry={chats.loadChats}
+                            onRetry={() => { void chats.loadChats(true); }}
                             selectedChatId={selectedSidebarChatId}
                             onSelectChat={handleSelectChat}
                             onStartChat={handleOpenStartChat}

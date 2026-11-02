@@ -15,6 +15,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const hasCheckedAuthRef = useRef(false);
+    const clearSession = useCallback(() => setUser(null), []);
 
     const refreshUser = useCallback(async () => {
         if (!hasCheckedAuthRef.current) {
@@ -49,7 +50,7 @@ function AuthProvider({ children }: { children: ReactNode }) {
     }, [refreshUser]);
 
     return (
-        <AuthContext.Provider value={{ user, loading, refreshUser, logout }}>
+        <AuthContext.Provider value={{ user, loading, refreshUser, logout, clearSession }}>
             {children}
         </AuthContext.Provider>
     );
