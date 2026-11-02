@@ -43,8 +43,11 @@ const apiRequest = async <T>(endpoint: string, options: RequestInit = {}, retry 
                 await refreshToken();
                 return apiRequest<T>(endpoint, options, false);
             }
-            catch {
-                throw new Error("Session expired. Please log in again.");
+            catch (refreshError) {
+                if (isApiError(refreshError) && refreshError.status === 401) {
+                    throw createApiError("Session expired. Please log in again.", 401);
+                }
+                throw refreshError;
             }
         }
         throw error;
@@ -68,5 +71,7 @@ const refreshToken = async () => {
 
 export {
     apiRequest,
+    refreshToken,
+    isApiError,
     BASE_URL
 };

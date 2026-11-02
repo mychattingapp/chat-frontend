@@ -5,6 +5,7 @@ type AuthState = {
     loading: boolean;
     refreshUser: () => Promise<void>;
     logout: () => Promise<void>;
+    clearSession: () => void;
 }
 
 export type { AuthState };

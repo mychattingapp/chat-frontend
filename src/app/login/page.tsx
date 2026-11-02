@@ -9,9 +9,9 @@ export default function LoginPage() {
                 display: 'flex',
                 justifyContent: 'center',
                 alignItems: 'center',
-                height: '100vh',
+                minHeight: '100vh',
                 width: '100%',
-                overflow: 'hidden',
+                overflowX: 'hidden',
                 backgroundColor: 'background.default',
                 p: { xs: 2, md: 4 },
             }}
