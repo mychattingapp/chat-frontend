@@ -6,6 +6,7 @@ import { updateProfile } from "../api/profileApi";
 import { useSnackbar } from "../../../shared/snackbar";
 import { getProfileImageSrc } from "../../../shared/utils/profileImage";
 import AvatarUploadDialog from "./AvatarUploadDialog";
+import { Link as RouterLink } from 'react-router-dom';
 
 const getInitials = (name: string) => name
     .trim()
@@ -65,6 +66,7 @@ export default function ProfileMain() {
             <Typography variant="body1" sx={{ color: 'text.secondary', mt: 1.5, mb: 4 }}>
                 Manage your account details.
             </Typography>
+            {user?.role === 'ADMIN' && <Button component={RouterLink} to="/admin" variant="outlined" sx={{ mb: 3 }}>Admin dashboard</Button>}
             <Box
                 sx={{
                     width: '100%',
